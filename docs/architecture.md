@@ -14,7 +14,7 @@
 ## 2. 系统架构
 
 ### 2.1 总体架构
-```mermaid
+```
 graph TD
 A[智能合约 Go代码] --> B(关键字安全审查)
 B --> C{审查通过?}
@@ -49,6 +49,11 @@ F --> G[与区块链环境交互]
 - 跨合约调用接口
 - 日志和事件接口
 
+#### 2.2.5 ABI生成器
+- 在合约编译阶段自动生成ABI（Application Binary Interface）
+- 提供合约接口信息供外部系统调用
+- 支持函数签名、参数类型等元数据的提取和序列化
+
 ## 3. 安全机制
 
 ### 3.1 关键字限制
@@ -70,14 +75,26 @@ F --> G[与区块链环境交互]
 通过沙箱机制限制合约对系统资源的访问，确保执行环境的安全性。
 
 ### 3.5 Gas计费机制
-Gas计费系统从两个维度实现资源控制：
-1. 代码行计费：在合约编译阶段，通过AddGasConsumption函数自动在代码中插入Gas消耗点，每个代码块开始处注入Gas消耗代码，每行代码执行消耗1点gas
-2. 接口操作计费：所有的包函数调用都有固定的gas消耗，基础操作消耗较少gas，存储操作消耗较多gas，合约调用等高级操作有额外的gas预留机制
+Gas计费系统通过以下方式实现资源控制：
+1. 代码行计费：每行代码执行消耗1点gas
+2. 接口操作计费：所有的包函数调用都有固定的gas消耗
+3. 复杂计算操作通过在default library里显式指定消耗更多gas进行限制
 
 ### 3.6 对象存储并发控制
 智能合约对象存储机制支持两种执行模式：
 1. 统一账户系统：所有信息保存到默认Object，类似EVM，需串行执行
 2. 并行执行支持：为不同用户创建不同Object，通过对象隔离实现交易并行执行
+
+### 3.7 对象操作权限控制
+Object操作时要求所有者要么是合约，要么是交易发起方，确保只有合法的实体可以修改对象。
+
+### 3.8 关键字处理机制
+- 在编译阶段通过AST分析识别和处理关键字
+- 对于禁止的关键字，编译器会拒绝合约部署
+- 对于允许的关键字，确保其在沙箱环境中安全执行
+
+### 3.9 并行执行优化
+通过要求交易携带Object的ReadList和WriteList，利用静态分析判断是否能够并行执行，提高系统吞吐量。
 
 ## 4. 模块设计
 
@@ -94,6 +111,8 @@ vm/
 │   └── analyzer.go        # 合约代码分析器（安全审查）
 ├── sandbox/               # 沙箱环境实现
 │   └── sandbox.go         # 沙箱配置与管理
+├── abi/                   # ABI生成和处理模块
+│   └── abi.go             # ABI生成器实现
 ├── docs/                  # 设计文档
 │   └── architecture.md    # 架构设计文档
 └── README.md              # 项目说明
@@ -105,6 +124,7 @@ vm/
 2. **Golang合约编译与加载机制**：在运行时安全地编译和加载合约代码
 3. **关键字安全审查系统**：在合约执行前进行静态分析，审查并禁止使用危险关键字
 4. **沙箱隔离环境**：提供严格受限的运行环境，防止合约访问敏感资源
+5. **ABI生成器**：在合约编译阶段自动生成ABI，提供合约接口信息
 
 ## 5. 执行环境
 
@@ -117,40 +137,12 @@ vm/
 - 交易数据采用JSON格式，包含完整函数名和参数
 - 无需定义标准函数签名
 
-## 6. 默认库接口规范
+## 6. 详细设计文档参考
 
-### 6.1 区块链信息相关接口
-- `BlockHeight() uint64`      // 获取当前区块高度
-- `BlockTime() int64`         // 获取当前区块时间戳
-- `ContractAddress() Address` // 获取当前合约地址
+有关默认库接口规范、安全审查规范、执行环境细节、Gas计费机制和ABI生成机制的详细信息，请参考以下专门的设计文档：
 
-### 6.2 账户操作相关接口
-- `Sender() Address`                                // 获取交易发送方或合约调用方
-- `Balance(addr Address) uint64`                    // 获取账户余额
-- `Transfer(from, to Address, amount uint64) error` // 转账操作
-
-### 6.3 对象存储相关接口
-- `CreateObject() Object`                             // 创建新对象，失败时panic
-- `GetObject(id ObjectID) (Object, error)`            // 获取指定对象，可能返回error
-- `GetObjectWithOwner(owner Address) (Object, error)` // 根据所有者获取对象，可能返回error
-- `DeleteObject(id ObjectID)`                         // 删除对象，失败时panic
-
-### 6.4 跨合约调用接口
-- `Call(contract Address, function string, args ...any) ([]byte, error)`
-
-### 6.5 日志和事件接口
-- `Log(eventName string, keyValues ...any)` // 记录事件
-
-### 6.6 Object接口
-```go
-type Object interface {
-  ID() ObjectID          // 获取对象ID
-  Owner() Address        // 获取对象所有者
-  Contract() Address     // 获取对象所属合约
-  SetOwner(addr Address) // 设置对象所有者，失败时panic
-
-  // 字段操作
-  Get(field string, value any) error // 获取字段值
-  Set(field string, value any) error // 设置字段值
-}
-```
+- [默认库接口规范](default_library.md)
+- [安全审查规范](security_review.md)
+- [执行环境设计](execution_environment.md)
+- [Gas计费机制](gas_metering.md)
+- [ABI生成与关键字处理](abi_generation.md)

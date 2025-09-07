@@ -1,2 +1,20 @@
-# vm
-This is a smart contract virtual machine based on Golang. Smart contracts are Golang code, not binary programs, and some keywords are restricted.
+# 智能合约虚拟机 (vm)
+
+这是一个基于Golang的智能合约虚拟机。智能合约是Golang源代码，而不是二进制程序，并且对一些关键字和导入库进行了限制以增强安全性。
+
+## 特性
+
+- **源码即合约**：智能合约本身就是Golang代码
+- **安全优先**：通过关键字白名单和导入白名单确保执行安全性
+- **开发友好**：降低智能合约开发门槛，让熟悉Go语言的开发者无缝接入
+- **并行执行**：通过对象隔离机制支持交易的并行执行
+- **Gas计费**：防止合约执行消耗过多系统资源
+
+## 文档
+
+- [架构设计](docs/architecture.md)
+- [安全审查规范](docs/security_review.md)
+- [默认库接口规范](docs/default_library.md)
+- [执行环境设计](docs/execution_environment.md)
+- [Gas计费机制](docs/gas_metering.md)
+- [ABI生成与关键字处理](docs/abi_generation.md)
