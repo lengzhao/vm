@@ -21,7 +21,7 @@
 
 ### 3.1 总体架构图
 
-```mermaid
+```
 graph LR
     A[客户端/外部系统] --> B[API网关层]
     B --> C[虚拟机核心引擎]
@@ -115,20 +115,11 @@ type VMEngine interface {
     // Execute 执行合约函数
     Execute(address ContractAddress, function string, args ...interface{}) ([]byte, error)
     
-    // Call 跨合约调用
-    Call(contract Address, function string, args ...any) ([]byte, error)
-    
-    // Stop 停止虚拟机
-    Stop() error
+    // EstimateGas 估算合约调用所需的Gas
+    EstimateGas(address ContractAddress, function string, args ...any) (uint64, error)
     
     // GetContractABI 获取合约ABI
     GetContractABI(address ContractAddress) (ABI, error)
-    
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
-    
-    // GetVersion 获取虚拟机版本
-    GetVersion() string
 }
 ```
 
@@ -192,9 +183,6 @@ type ExecutionEnvironment interface {
     
     // GetResourceUsage 获取资源使用情况
     GetResourceUsage() ResourceUsage
-    
-    // Stop 停止执行环境
-    Stop() error
 }
 ```
 
@@ -208,9 +196,6 @@ type GasMetering interface {
     // ConsumeGas 消耗Gas
     ConsumeGas(amount uint64, description string) error
     
-    // RefundGas 退还Gas
-    RefundGas(amount uint64, description string)
-    
     // GetConsumedGas 获取已消耗的Gas
     GetConsumedGas() uint64
     
@@ -219,12 +204,6 @@ type GasMetering interface {
     
     // SetGasLimit 设置Gas限制
     SetGasLimit(limit uint64)
-    
-    // Enable 启用Gas计量
-    Enable()
-    
-    // Disable 禁用Gas计量
-    Disable()
 }
 ```
 
@@ -237,9 +216,6 @@ type GasMetering interface {
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
     Generate(sourceCode string) (*ABI, error)
-    
-    // GenerateFromAST 从AST生成ABI
-    GenerateFromAST(file *ast.File) (*ABI, error)
     
     // Validate 验证ABI的正确性
     Validate(abi *ABI) error
@@ -293,7 +269,7 @@ type ContractManager interface {
     GetContract(address ContractAddress) (CompiledContract, error)
     
     // ListContracts 列出所有合约
-    ListContracts() ([]ContractAddress, error)
+    ListContracts(offset,limit int) ([]ContractAddress, error)
     
     // GetContractStatus 获取合约状态
     GetContractStatus(address ContractAddress) (ContractStatus, error)
@@ -410,43 +386,7 @@ type ExecutionResult struct {
 
 ## 6. 扩展性设计
 
-### 6.1 插件化架构
-
-通过接口定义实现插件化架构，支持功能模块的动态替换和扩展：
-
-```go
-// Plugin 插件接口
-type Plugin interface {
-    // Name 插件名称
-    Name() string
-    
-    // Version 插件版本
-    Version() string
-    
-    // Initialize 初始化插件
-    Initialize(config map[string]interface{}) error
-    
-    // Shutdown 关闭插件
-    Shutdown() error
-}
-
-// PluginManager 插件管理器
-type PluginManager interface {
-    // RegisterPlugin 注册插件
-    RegisterPlugin(plugin Plugin) error
-    
-    // UnregisterPlugin 注销插件
-    UnregisterPlugin(name string) error
-    
-    // GetPlugin 获取插件
-    GetPlugin(name string) (Plugin, error)
-    
-    // ListPlugins 列出所有插件
-    ListPlugins() []string
-}
-```
-
-### 6.2 配置管理
+### 6.1 配置管理
 
 通过统一的配置管理机制支持模块的灵活配置：
 
@@ -518,7 +458,7 @@ func (mt *ModuleTester) RunModuleTest(testName string, testData interface{}) (in
 
 1. **第一阶段**：重构核心引擎，明确各模块接口
 2. **第二阶段**：实现模块解耦，引入依赖注入
-3. **第三阶段**：完善配置管理和插件机制
+3. **第三阶段**：完善配置管理
 4. **第四阶段**：增强测试支持和监控能力
 
 ### 8.2 技术选型建议

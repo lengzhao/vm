@@ -41,25 +41,24 @@ Gas计费系统通过以下方式实现资源控制：
 
 | 接口函数 | Gas消耗 |
 |---------|--------|
-| BlockHeight() | 1 |
-| BlockTime() | 1 |
-| ContractAddress() | 1 |
-| Sender() | 1 |
-| Balance() | 5 |
-| Transfer() | 20 |
-| Log() | 2 |
+| BlockHeight() | 10 |
+| BlockTime() | 10 |
+| ContractAddress() | 10 |
+| Sender() | 10 |
+| Transfer() | 100 |
+| Log() | 20 |
 
 ### 3.3 对象存储接口Gas消耗
 
 | 接口函数 | Gas消耗 |
 |---------|--------|
-| CreateObject() | 50 |
+| CreateObject() | 150 |
 | GetObject() | 10 |
 | GetObjectWithOwner() | 15 |
 | DeleteObject() | 10 |
-| Object.Get() | 5 |
-| Object.Set() | 10 |
-| Object.SetOwner() | 10 |
+| Object.Get() | 15 |
+| Object.Set() | 30*length |
+| Object.SetOwner() | 20 |
 
 ### 3.4 跨合约调用Gas消耗
 
@@ -81,27 +80,13 @@ Gas计费系统通过以下方式实现资源控制：
 1. 监控Gas消耗
 2. 当接近限制时，触发预警
 3. 超过限制时，立即停止执行
-4. 回滚已执行的操作
-5. 返回Gas不足错误
+4. 所有状态操作都是缓存到内存中，全部正确执行后，才会提交到数据库
+5. 如果异常，则不提交，相当于回滚了
+6. 返回Gas不足错误
 
-## 5. Gas预估与优化
+## 5. 实现细节
 
-### 5.1 Gas预估机制
-
-- 提供静态分析工具预估合约执行所需Gas
-- 在合约部署时进行Gas消耗分析
-- 为用户提供Gas消耗参考值
-
-### 5.2 Gas优化建议
-
-- 避免不必要的循环和递归
-- 减少存储操作次数
-- 合理使用跨合约调用
-- 优化数据结构以减少内存使用
-
-## 6. 实现细节
-
-### 6.1 Gas计数器
+### 5.1 Gas计数器
 
 Gas计数器在合约执行过程中跟踪已消耗的Gas数量：
 
@@ -113,7 +98,7 @@ type GasMeter struct {
 }
 ```
 
-### 6.2 Gas消耗函数
+### 5.2 Gas消耗函数
 
 ```go
 func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
@@ -129,7 +114,7 @@ func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
 }
 ```
 
-### 6.3 编译期Gas注入
+### 5.3 编译期Gas注入
 
 在编译阶段，通过AST分析在适当位置插入Gas消耗代码：
 
