@@ -110,16 +110,16 @@ type VMEngine interface {
     Compile(sourceCode string) (CompiledContract, error)
     
     // Deploy 部署合约
-    Deploy(contract CompiledContract) (ContractAddress, error)
+    Deploy(contract CompiledContract) (Address, error)
     
     // Execute 执行合约函数
-    Execute(address ContractAddress, function string, args ...interface{}) ([]byte, error)
+    Execute(address Address, function string, args ...interface{}) ([]byte, error)
     
     // EstimateGas 估算合约调用所需的Gas
-    EstimateGas(address ContractAddress, function string, args ...any) (uint64, error)
+    EstimateGas(address Address, function string, args ...any) (uint64, error)
     
     // GetContractABI 获取合约ABI
-    GetContractABI(address ContractAddress) (ABI, error)
+    GetContractABI(address Address) (ABI, error)
 }
 ```
 
@@ -233,22 +233,22 @@ type ABIGenerator interface {
 // StorageManager 存储管理模块接口
 type StorageManager interface {
     // StoreContract 存储合约
-    StoreContract(contract CompiledContract) (ContractAddress, error)
+    StoreContract(contract CompiledContract) (Address, error)
     
     // LoadContract 加载合约
-    LoadContract(address ContractAddress) (CompiledContract, error)
+    LoadContract(address Address) (CompiledContract, error)
     
     // DeleteContract 删除合约
-    DeleteContract(address ContractAddress) error
+    DeleteContract(address Address) error
     
     // StoreABI 存储ABI
-    StoreABI(address ContractAddress, abi ABI) error
+    StoreABI(address Address, abi ABI) error
     
     // LoadABI 加载ABI
-    LoadABI(address ContractAddress) (ABI, error)
+    LoadABI(address Address) (ABI, error)
     
     // GetContractPath 获取合约存储路径
-    GetContractPath(address ContractAddress) string
+    GetContractPath(address Address) string
 }
 ```
 
@@ -260,19 +260,19 @@ type StorageManager interface {
 // ContractManager 合约管理模块接口
 type ContractManager interface {
     // Deploy 部署合约
-    Deploy(contract CompiledContract) (ContractAddress, error)
+    Deploy(contract CompiledContract) (Address, error)
     
     // Undeploy 卸载合约
-    Undeploy(address ContractAddress) error
+    Undeploy(address Address) error
     
     // GetContract 获取合约
-    GetContract(address ContractAddress) (CompiledContract, error)
+    GetContract(address Address) (CompiledContract, error)
     
     // ListContracts 列出所有合约
-    ListContracts(offset,limit int) ([]ContractAddress, error)
+    ListContracts(offset,limit int) ([]Address, error)
     
     // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
+    GetContractStatus(address Address) (ContractStatus, error)
 }
 ```
 
@@ -325,14 +325,11 @@ type CompiledContract struct {
     // 编译时间
     CompileTime time.Time
     
-    // Gas价格
-    GasPrice uint64
-    
     // 源代码哈希
     SourceHash string
     
     // 合约地址
-    Address ContractAddress
+    Address Address
 }
 
 // CompilationResult 编译结果

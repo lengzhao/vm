@@ -1,4 +1,4 @@
-# 安全审查系统详细设计文档（更新版）
+# 安全审查系统详细设计文档
 
 ## 1. 引言
 
@@ -80,7 +80,8 @@ type ReviewResult struct {
 ### 3.2 核心接口设计
 
 #### 3.2.1 SecurityReviewer 接口
-```go
+``go
+// SecurityReviewer 安全审查模块接口（与架构文档保持一致）
 type SecurityReviewer interface {
     // Review 对合约源代码进行安全审查
     Review(sourceCode string) (*ReviewResult, error)
@@ -96,16 +97,13 @@ type SecurityReviewer interface {
     
     // AddAllowedImport 添加允许导入
     AddAllowedImport(importPath string)
-    
-    // GetWhitelists 获取白名单列表
-    GetWhitelists() *WhitelistInfo
 }
 ```
 
 ### 3.3 核心功能实现
 
 #### 3.3.1 审查流程
-```mermaid
+``mermaid
 graph TD
 A[输入源代码] --> B[AST解析]
 B --> C[关键字审查]
@@ -116,7 +114,7 @@ E --> |否| G[返回错误详情]
 ```
 
 #### 3.3.2 AST解析流程
-```mermaid
+``mermaid
 graph TD
 A[源代码] --> B[词法分析]
 B --> C[语法分析]
@@ -332,7 +330,7 @@ type ReviewWarning struct {
 - 违规类型统计
 
 ### 11.3 配置示例
-```yaml
+```
 security:
   enable_keyword_review: true
   enable_import_review: true

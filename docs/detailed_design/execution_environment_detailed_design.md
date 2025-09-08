@@ -1,4 +1,4 @@
-# 执行环境模块详细设计文档（更新版）
+# 执行环境模块详细设计文档
 
 ## 1. 引言
 
@@ -88,7 +88,8 @@ type ExecutionResult struct {
 ### 3.2 核心接口设计
 
 #### 3.2.1 ExecutionEnvironment 接口
-```go
+``go
+// ExecutionEnvironment 执行环境模块接口（与架构文档保持一致）
 type ExecutionEnvironment interface {
     // Run 在执行环境中运行合约
     Run(contract CompiledContract, function string, args ...interface{}) (*ExecutionResult, error)
@@ -98,9 +99,6 @@ type ExecutionEnvironment interface {
     
     // GetResourceUsage 获取资源使用情况
     GetResourceUsage() ResourceUsage
-    
-    // Stop 停止执行环境
-    Stop() error
     
     // GetEnvironmentInfo 获取环境信息
     GetEnvironmentInfo() *EnvironmentInfo

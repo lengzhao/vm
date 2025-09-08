@@ -1,4 +1,4 @@
-# 智能合约虚拟机详细设计总览（更新版）
+# 智能合约虚拟机详细设计总览
 
 ## 1. 引言
 
@@ -17,7 +17,7 @@
 ## 2. 系统架构详细设计
 
 ### 2.1 总体架构图
-```mermaid
+```
 graph LR
     A[客户端/外部系统] --> B[API网关层]
     B --> C[虚拟机核心引擎]
@@ -98,7 +98,8 @@ graph LR
 - 提供与外部系统交互的接口
 
 ##### 2.2.1.2 接口设计
-```go
+```
+// VMEngine 虚拟机核心引擎接口（与架构文档保持一致）
 type VMEngine interface {
     // Compile 编译合约源代码
     Compile(sourceCode string) (CompiledContract, error)
@@ -109,11 +110,8 @@ type VMEngine interface {
     // Execute 执行合约函数
     Execute(address ContractAddress, function string, args ...interface{}) ([]byte, error)
     
-    // Call 跨合约调用
-    Call(contract Address, function string, args ...any) ([]byte, error)
-    
-    // Stop 停止虚拟机
-    Stop() error
+    // EstimateGas 估算合约调用所需的Gas
+    EstimateGas(address ContractAddress, function string, args ...any) (uint64, error)
     
     // GetContractABI 获取合约ABI
     GetContractABI(address ContractAddress) (ABI, error)
@@ -135,7 +133,8 @@ type VMEngine interface {
 - 检查导入列表，仅允许导入指定的安全库
 
 ##### 2.2.2.2 接口设计
-```go
+```
+// SecurityReviewer 安全审查模块接口（与架构文档保持一致）
 type SecurityReviewer interface {
     // Review 对合约源代码进行安全审查
     Review(sourceCode string) (*ReviewResult, error)
@@ -164,7 +163,8 @@ type SecurityReviewer interface {
 - 生成可执行文件
 
 ##### 2.2.3.2 接口设计
-```go
+```
+// ContractCompiler 编译器模块接口（与架构文档保持一致）
 type ContractCompiler interface {
     // Compile 编译源代码
     Compile(sourceCode string) (*CompilationResult, error)
@@ -189,7 +189,8 @@ type ContractCompiler interface {
 - 确保合约执行的安全性和隔离性
 
 ##### 2.2.4.2 接口设计
-```go
+```
+// ExecutionEnvironment 执行环境模块接口（与架构文档保持一致）
 type ExecutionEnvironment interface {
     // Run 在执行环境中运行合约
     Run(contract CompiledContract, function string, args ...interface{}) (*ExecutionResult, error)
@@ -215,13 +216,11 @@ Gas计费模块通过计费机制防止合约执行消耗过多系统资源。
 - 记录Gas消耗历史
 
 ##### 2.2.5.2 接口设计
-```go
+```
+// GasMetering Gas计费模块接口（与架构文档保持一致）
 type GasMetering interface {
     // ConsumeGas 消耗Gas
     ConsumeGas(amount uint64, description string) error
-    
-    // RefundGas 退还Gas
-    RefundGas(amount uint64, description string)
     
     // GetConsumedGas 获取已消耗的Gas
     GetConsumedGas() uint64
@@ -250,13 +249,11 @@ ABI生成模块在合约编译阶段自动生成ABI（Application Binary Interfa
 - 提供ABI验证功能
 
 ##### 2.2.6.2 接口设计
-```go
+```
+// ABIGenerator ABI生成模块接口（与架构文档保持一致）
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
     Generate(sourceCode string) (*ABI, error)
-    
-    // GenerateFromAST 从AST生成ABI
-    GenerateFromAST(file *ast.File) (*ABI, error)
     
     // Validate 验证ABI的正确性
     Validate(abi *ABI) error
@@ -276,7 +273,8 @@ type ABIGenerator interface {
 - 提供存储访问控制
 
 ##### 2.2.7.2 接口设计
-```go
+```
+// StorageManager 存储管理模块接口（与架构文档保持一致）
 type StorageManager interface {
     // StoreContract 存储合约
     StoreContract(contract CompiledContract) (ContractAddress, error)
@@ -308,7 +306,8 @@ type StorageManager interface {
 - 支持合约升级机制
 
 ##### 2.2.8.2 接口设计
-```go
+```
+// ContractManager 合约管理模块接口（与架构文档保持一致）
 type ContractManager interface {
     // Deploy 部署合约
     Deploy(contract CompiledContract) (ContractAddress, error)
@@ -320,7 +319,7 @@ type ContractManager interface {
     GetContract(address ContractAddress) (CompiledContract, error)
     
     // ListContracts 列出所有合约
-    ListContracts() ([]ContractAddress, error)
+    ListContracts(offset,limit int) ([]ContractAddress, error)
     
     // GetContractStatus 获取合约状态
     GetContractStatus(address ContractAddress) (ContractStatus, error)
@@ -332,7 +331,7 @@ type ContractManager interface {
 ### 3.1 依赖关系管理
 通过依赖注入的方式管理模块间的依赖关系，降低耦合度：
 
-```go
+```
 // VMEngineConfig 虚拟机引擎配置
 type VMEngineConfig struct {
     SecurityReviewer   SecurityReviewer
@@ -362,7 +361,7 @@ func NewVMEngine(config VMEngineConfig) VMEngine {
 ### 3.2 数据传输对象
 定义清晰的数据传输对象，确保模块间数据传递的一致性：
 
-```go
+```
 // CompiledContract 编译后的合约
 type CompiledContract struct {
     // 合约可执行文件路径
@@ -438,7 +437,7 @@ type ExecutionResult struct {
 ### 4.1 插件化架构
 通过接口定义实现插件化架构，支持功能模块的动态替换和扩展：
 
-```go
+```
 // Plugin 插件接口
 type Plugin interface {
     // Name 插件名称
@@ -473,7 +472,7 @@ type PluginManager interface {
 ### 4.2 配置管理
 通过统一的配置管理机制支持模块的灵活配置：
 
-```go
+```
 // Config 配置接口
 type Config interface {
     // Get 获取配置项
@@ -505,7 +504,7 @@ func (cm *ConfigManager) GetConfig(module string) Config {
 ### 5.1 模块化测试
 每个模块提供专门的测试接口，支持独立测试：
 
-```go
+```
 // Testable 可测试接口
 type Testable interface {
     // SetupTest 测试设置
@@ -539,12 +538,12 @@ func (mt *ModuleTester) RunModuleTest(testName string, testData interface{}) (in
 ### 6.1 核心数据结构
 
 #### 6.1.1 合约地址
-```go
+```
 type ContractAddress string
 ```
 
 #### 6.1.2 编译后的合约
-```go
+```
 type CompiledContract struct {
     Bytecode []byte
     ABI      ABI
@@ -552,7 +551,7 @@ type CompiledContract struct {
 ```
 
 #### 6.1.3 ABI结构
-```go
+```
 type ABI struct {
     Functions []Function
     Events    []Event
@@ -560,7 +559,7 @@ type ABI struct {
 ```
 
 #### 6.1.4 函数定义
-```go
+```
 type Function struct {
     Name       string
     Inputs     []Parameter
@@ -570,7 +569,7 @@ type Function struct {
 ```
 
 #### 6.1.5 资源限制
-```go
+```
 type ResourceLimit struct {
     MaxMemory    uint64 // 最大内存使用量 (bytes)
     MaxCPU       uint64 // 最大CPU时间 (milliseconds)
@@ -580,7 +579,7 @@ type ResourceLimit struct {
 ```
 
 #### 6.1.6 资源使用情况
-```go
+```
 type ResourceUsage struct {
     MemoryUsage  uint64
     CPUUsage     uint64

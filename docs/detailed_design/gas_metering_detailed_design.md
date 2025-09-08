@@ -1,4 +1,4 @@
-# Gas计费模块详细设计文档（更新版）
+# Gas计费模块详细设计文档
 
 ## 1. 引言
 
@@ -83,12 +83,10 @@ type GasConsumptionRecord struct {
 
 #### 3.2.1 GasMetering 接口
 ```go
+// GasMetering Gas计费模块接口（与架构文档保持一致）
 type GasMetering interface {
     // ConsumeGas 消耗Gas
     ConsumeGas(amount uint64, description string) error
-    
-    // RefundGas 退还Gas
-    RefundGas(amount uint64, description string)
     
     // GetConsumedGas 获取已消耗的Gas
     GetConsumedGas() uint64
@@ -98,18 +96,6 @@ type GasMetering interface {
     
     // SetGasLimit 设置Gas限制
     SetGasLimit(limit uint64)
-    
-    // Enable 启用Gas计量
-    Enable()
-    
-    // Disable 禁用Gas计量
-    Disable()
-    
-    // Reset 重置Gas计量
-    Reset()
-    
-    // GetConsumptionLog 获取消耗记录
-    GetConsumptionLog() []GasConsumptionRecord
     
     // GetGasInfo 获取Gas信息
     GetGasInfo() *GasInfo

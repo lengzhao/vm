@@ -1,4 +1,4 @@
-# 虚拟机执行引擎详细设计文档（更新版）
+# 虚拟机执行引擎详细设计文档
 
 ## 1. 引言
 
@@ -21,7 +21,7 @@
 - 提供与外部系统交互的接口
 
 ### 2.2 架构图
-```mermaid
+```
 graph TD
 A[VM Engine] --> B[安全审查模块]
 A --> C[编译器模块]
@@ -87,6 +87,7 @@ type VMConfig struct {
 
 #### 3.2.1 VMEngine 接口
 ```go
+// VMEngine 虚拟机核心引擎接口（与架构文档保持一致）
 type VMEngine interface {
     // Compile 编译合约源代码
     Compile(sourceCode string) (CompiledContract, error)
@@ -97,11 +98,8 @@ type VMEngine interface {
     // Execute 执行合约函数
     Execute(address ContractAddress, function string, args ...interface{}) ([]byte, error)
     
-    // Call 跨合约调用
-    Call(contract Address, function string, args ...any) ([]byte, error)
-    
-    // Stop 停止虚拟机
-    Stop() error
+    // EstimateGas 估算合约调用所需的Gas
+    EstimateGas(address ContractAddress, function string, args ...any) (uint64, error)
     
     // GetContractABI 获取合约ABI
     GetContractABI(address ContractAddress) (ABI, error)
@@ -384,7 +382,7 @@ type Testable interface {
 - 各模块性能指标
 
 ### 10.3 配置管理
-```yaml
+```
 vm:
   max_gas_limit: 10000000
   enable_security_checks: true

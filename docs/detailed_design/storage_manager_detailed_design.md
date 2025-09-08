@@ -1,4 +1,4 @@
-# 存储管理模块详细设计文档（更新版）
+# 存储管理模块详细设计文档
 
 ## 1. 引言
 
@@ -89,6 +89,7 @@ type StorageMetadata struct {
 
 #### 3.2.1 StorageManager 接口
 ```go
+// StorageManager 存储管理模块接口（与架构文档保持一致）
 type StorageManager interface {
     // StoreContract 存储合约
     StoreContract(contract CompiledContract) (ContractAddress, error)
@@ -107,12 +108,6 @@ type StorageManager interface {
     
     // GetContractPath 获取合约存储路径
     GetContractPath(address ContractAddress) string
-    
-    // ListContracts 列出所有合约
-    ListContracts() ([]ContractAddress, error)
-    
-    // GetStorageInfo 获取存储信息
-    GetStorageInfo() *StorageInfo
 }
 ```
 

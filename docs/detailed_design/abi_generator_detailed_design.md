@@ -1,4 +1,4 @@
-# ABI生成模块详细设计文档（更新版）
+# ABI生成模块详细设计文档
 
 ## 1. 引言
 
@@ -94,24 +94,16 @@ type ABI struct {
 
 #### 3.2.1 ABIGenerator 接口
 ```go
+// ABIGenerator ABI生成模块接口（与架构文档保持一致）
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
     Generate(sourceCode string) (*ABI, error)
-    
-    // GenerateFromAST 从AST生成ABI
-    GenerateFromAST(file *ast.File) (*ABI, error)
     
     // Validate 验证ABI的正确性
     Validate(abi *ABI) error
     
     // Serialize 序列化ABI
     Serialize(abi *ABI) ([]byte, error)
-    
-    // Deserialize 反序列化ABI
-    Deserialize(data []byte) (*ABI, error)
-    
-    // GetABIInfo 获取ABI信息
-    GetABIInfo() *ABIInfo
 }
 ```
 
@@ -493,7 +485,8 @@ type GenerateABIResponse struct {
 ```json
 {
   "name": "TokenContract",
-  "version": "1.0.0",
+  "hash": "0x1234567890abcdef1245",
+  "address": "0x1234567890abcdef",
   "functions": [
     {
       "name": "Transfer",
@@ -514,10 +507,7 @@ type GenerateABIResponse struct {
           "name": "success",
           "type": "bool"
         }
-      ],
-      "public": true,
-      "state_mutability": "nonpayable",
-      "gas_estimate": 21000
+      ]
     }
   ],
   "events": [
@@ -539,12 +529,7 @@ type GenerateABIResponse struct {
       ],
       "anonymous": false
     }
-  ],
-  "metadata": {
-    "compiler": "TinyGo 0.20.0",
-    "language": "Go 1.16"
-  },
-  "generated_at": "2023-01-01T00:00:00Z"
+  ]
 }
 ```
 

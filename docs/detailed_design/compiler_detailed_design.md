@@ -1,4 +1,4 @@
-# 编译器模块详细设计文档（更新版）
+# 编译器模块详细设计文档
 
 ## 1. 引言
 
@@ -89,6 +89,7 @@ type CompilationResult struct {
 
 #### 3.2.1 ContractCompiler 接口
 ```go
+// ContractCompiler 编译器模块接口（与架构文档保持一致）
 type ContractCompiler interface {
     // Compile 编译源代码
     Compile(sourceCode string) (*CompilationResult, error)
@@ -101,9 +102,6 @@ type ContractCompiler interface {
     
     // GenerateMainFunction 生成Main函数
     GenerateMainFunction(sourceCode string) (string, error)
-    
-    // GetCompilerInfo 获取编译器信息
-    GetCompilerInfo() *CompilerInfo
 }
 ```
 

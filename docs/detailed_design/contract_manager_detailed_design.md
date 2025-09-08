@@ -1,4 +1,4 @@
-# 合约管理模块详细设计文档（更新版）
+# 合约管理模块详细设计文档
 
 ## 1. 引言
 
@@ -77,6 +77,7 @@ const (
 
 #### 3.2.1 ContractManager 接口
 ```go
+// ContractManager 合约管理模块接口（与架构文档保持一致）
 type ContractManager interface {
     // Deploy 部署合约
     Deploy(contract CompiledContract) (ContractAddress, error)
@@ -88,7 +89,7 @@ type ContractManager interface {
     GetContract(address ContractAddress) (CompiledContract, error)
     
     // ListContracts 列出所有合约
-    ListContracts() ([]ContractAddress, error)
+    ListContracts(offset,limit int) ([]ContractAddress, error)
     
     // GetContractStatus 获取合约状态
     GetContractStatus(address ContractAddress) (ContractStatus, error)
