@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lengzhao/vm/abi"
 )
 
 // VMEngine represents the virtual machine engine
@@ -21,6 +23,18 @@ type VMEngine struct {
 
 	// Creation time
 	createdAt time.Time
+
+	// Security reviewer for contract code
+	securityReviewer SecurityReviewer
+
+	// ABI generator for contract code
+	abiGenerator ABIGenerator
+
+	// Gas metering for contract execution
+	gasMetering GasMetering
+
+	// Contract manager for contract lifecycle
+	contractManager ContractManager
 }
 
 // VMConfig represents the configuration for the VM
@@ -41,6 +55,25 @@ type VMConfig struct {
 	ContractStorageDir string
 }
 
+// ABIGenerator ABI生成模块接口
+type ABIGenerator interface {
+	// Generate 从源代码生成ABI
+	Generate(sourceCode string) (*abi.ABI, error)
+}
+
+// ABIGeneratorImpl ABI生成器实现
+type ABIGeneratorImpl struct{}
+
+// NewABIGenerator 创建新的ABI生成器实例
+func NewABIGenerator() ABIGenerator {
+	return &ABIGeneratorImpl{}
+}
+
+// Generate 从源代码生成ABI
+func (a *ABIGeneratorImpl) Generate(sourceCode string) (*abi.ABI, error) {
+	return abi.ExtractABI([]byte(sourceCode))
+}
+
 // NewVMEngine creates a new VM engine with the given configuration
 func NewVMEngine(config VMConfig) *VMEngine {
 	// Create contract storage directory if it doesn't exist
@@ -52,15 +85,39 @@ func NewVMEngine(config VMConfig) *VMEngine {
 		fmt.Printf("Warning: failed to create contract storage directory: %v\n", err)
 	}
 
+	// Create gas metering instance
+	gasMetering := NewGasMetering()
+	if config.EnableGasMetering && config.MaxGasLimit > 0 {
+		gasMetering.SetGasLimit(config.MaxGasLimit)
+	}
+
+	// Create security reviewer and ABI generator
+	securityReviewer := NewSecurityReviewer()
+	abiGenerator := NewABIGenerator()
+
+	// Create contract manager
+	contractManager := NewContractManager(config.ContractStorageDir, securityReviewer, abiGenerator)
+
 	return &VMEngine{
-		config:    config,
-		version:   "1.0.0",
-		createdAt: time.Now(),
+		config:           config,
+		version:          "1.0.0",
+		createdAt:        time.Now(),
+		securityReviewer: securityReviewer,
+		abiGenerator:     abiGenerator,
+		gasMetering:      gasMetering,
+		contractManager:  contractManager,
 	}
 }
 
 // Compile compiles the given source code into an executable file
-func (vm *VMEngine) Compile(sourceCode string) (string, error) {
+func (vm *VMEngine) Compile(sourceCode string) (*CompiledContract, error) {
+	// Perform security checks if enabled
+	if vm.config.EnableSecurityChecks {
+		if err := vm.securityReviewer.Review(sourceCode); err != nil {
+			return nil, fmt.Errorf("security review failed: %w", err)
+		}
+	}
+
 	// TODO: Implement source code compilation
 	// This would involve:
 	// 1. Parsing the source code
@@ -69,7 +126,7 @@ func (vm *VMEngine) Compile(sourceCode string) (string, error) {
 	// 4. Storing the executable file locally
 
 	if sourceCode == "" {
-		return "", fmt.Errorf("source code cannot be empty")
+		return nil, fmt.Errorf("source code cannot be empty")
 	}
 
 	// Generate a hash of the source code for filename
@@ -83,21 +140,48 @@ func (vm *VMEngine) Compile(sourceCode string) (string, error) {
 
 	// Write source code to temporary file
 	if err := os.WriteFile(sourceFile, []byte(sourceCode), 0644); err != nil {
-		return "", fmt.Errorf("failed to write source file: %v", err)
+		return nil, fmt.Errorf("failed to write source file: %v", err)
 	}
 
 	// TODO: Use TinyGo to compile the source code
 	// For now, we'll create a placeholder executable
 	placeholderContent := fmt.Sprintf("#!/bin/sh\necho 'Executing contract: %s'\necho 'Source hash: %s'", sourceFile, hashStr)
 	if err := os.WriteFile(execFile, []byte(placeholderContent), 0755); err != nil {
-		return "", fmt.Errorf("failed to create executable file: %v", err)
+		return nil, fmt.Errorf("failed to create executable file: %v", err)
 	}
 
-	return execFile, nil
+	// Generate ABI
+	contractABI, err := vm.abiGenerator.Generate(sourceCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate ABI: %w", err)
+	}
+
+	// Create compiled contract
+	compiledContract := &CompiledContract{
+		ExecutablePath: execFile,
+		ABI:            contractABI,
+		CompileTime:    time.Now(),
+		SourceHash:     hashStr,
+		Address:        "",
+	}
+
+	return compiledContract, nil
+}
+
+// GenerateABI generates the ABI for the given source code
+func (vm *VMEngine) GenerateABI(sourceCode string) (*abi.ABI, error) {
+	// Perform security checks if enabled
+	if vm.config.EnableSecurityChecks {
+		if err := vm.securityReviewer.Review(sourceCode); err != nil {
+			return nil, fmt.Errorf("security review failed: %w", err)
+		}
+	}
+
+	return vm.abiGenerator.Generate(sourceCode)
 }
 
 // Deploy deploys the compiled contract
-func (vm *VMEngine) Deploy(executablePath string) (string, error) {
+func (vm *VMEngine) Deploy(contract *CompiledContract) (string, error) {
 	// TODO: Implement contract deployment
 	// This would involve:
 	// 1. Verifying the executable file exists
@@ -105,22 +189,41 @@ func (vm *VMEngine) Deploy(executablePath string) (string, error) {
 	// 3. Storing the executable path
 	// 4. Initializing contract state
 
-	if executablePath == "" {
+	if contract == nil {
+		return "", fmt.Errorf("contract cannot be nil")
+	}
+
+	if contract.ExecutablePath == "" {
 		return "", fmt.Errorf("executable path cannot be empty")
 	}
 
 	// Check if the executable file exists
-	if _, err := os.Stat(executablePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("executable file does not exist: %s", executablePath)
+	if _, err := os.Stat(contract.ExecutablePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("executable file does not exist: %s", contract.ExecutablePath)
 	}
 
-	// Generate contract address
-	contractAddress := fmt.Sprintf("contract_%d", time.Now().Unix())
-	return contractAddress, nil
+	// Use contract manager to deploy
+	address, err := vm.contractManager.Deploy(contract)
+	if err != nil {
+		return "", fmt.Errorf("failed to deploy contract: %w", err)
+	}
+
+	// Update contract address
+	contract.Address = address
+
+	return address, nil
 }
 
 // Execute executes a function on the deployed contract
 func (vm *VMEngine) Execute(contractAddress, function string, args ...interface{}) ([]byte, error) {
+	// Reset gas metering for this execution
+	if vm.config.EnableGasMetering {
+		vm.gasMetering.Reset()
+		if vm.config.MaxGasLimit > 0 {
+			vm.gasMetering.SetGasLimit(vm.config.MaxGasLimit)
+		}
+	}
+
 	// TODO: Implement contract execution
 	// This would involve:
 	// 1. Looking up the contract executable path
@@ -142,7 +245,24 @@ func (vm *VMEngine) Execute(contractAddress, function string, args ...interface{
 
 	// Placeholder implementation
 	result := []byte(fmt.Sprintf("executed %s on %s with args %v", function, contractAddress, args))
+
+	// Consume some gas for the execution
+	if vm.config.EnableGasMetering {
+		// 消耗一些Gas用于执行
+		vm.gasMetering.ConsumeGas(10)
+	}
+
 	return result, nil
+}
+
+// GetContract 获取合约
+func (vm *VMEngine) GetContract(address string) (*CompiledContract, error) {
+	return vm.contractManager.GetContract(address)
+}
+
+// GetContractABI 获取合约ABI
+func (vm *VMEngine) GetContractABI(address string) (*abi.ABI, error) {
+	return vm.contractManager.GetContractABI(address)
 }
 
 // GetVersion returns the version of the VM
@@ -153,6 +273,11 @@ func (vm *VMEngine) GetVersion() string {
 // GetConfig returns the configuration of the VM
 func (vm *VMEngine) GetConfig() VMConfig {
 	return vm.config
+}
+
+// GetGasConsumed returns the amount of gas consumed in the last execution
+func (vm *VMEngine) GetGasConsumed() uint64 {
+	return vm.gasMetering.GetConsumedGas()
 }
 
 // Stop stops the VM engine
