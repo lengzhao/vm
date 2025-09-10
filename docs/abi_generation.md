@@ -26,8 +26,6 @@ ABI生成器会提取以下元数据：
 - 函数名称
 - 参数名称和类型
 - 返回值类型
-- 函数修饰符（如只读、可变等）
-- 函数的Gas消耗预估
 
 #### 2.2.3 ABI序列化
 生成的ABI信息会被序列化为JSON格式，便于外部系统使用：
@@ -42,8 +40,7 @@ ABI生成器会提取以下元数据：
       ],
       "outputs": [
         {"name": "", "type": "bool"}
-      ],
-      "gas": 20
+      ]
     }
   ]
 }
@@ -65,42 +62,35 @@ ABI生成器会提取以下元数据：
 
 ## 3. 关键字处理机制
 
-### 3.1 关键字分类
+### 3.1 关键字白名单机制
 
-#### 3.1.1 禁止关键字
-这些关键字在合约中被完全禁止使用：
-- `unsafe`: 不安全的内存操作
-- `go`: 并发执行可能导致不确定性
-- `select`: 与goroutine配合使用可能带来不确定性
-- `chan`: 通道操作可能带来并发问题
-- `goto`: 无序跳转可能带来逻辑混乱
+关键字处理采用白名单机制，合约中只能使用白名单中定义的关键字，除此之外的所有关键字都被禁止使用。
 
-#### 3.1.2 限制关键字
-这些关键字在特定上下文中被限制使用：
-- `map`: 可能导致内存使用不可控
-- `cap`: 可能用于不确定的内存操作
-
-#### 3.1.3 允许关键字
+#### 3.1.1 允许的关键字
 这些关键字在合约中可以安全使用：
 - 基本类型关键字：`int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `string`, `bool`
 - 控制流关键字：`if`, `else`, `for`, `switch`, `case`, `default`, `break`, `continue`, `return`
 - 其他安全关键字：`nil`, `true`, `false`
 - 内存操作关键字：`len`, `new`, `make`
 
+#### 3.1.2 禁止的关键字
+除了白名单中定义的关键字外，其他所有关键字都被禁止使用，包括但不限于：
+- `unsafe`: 不安全的内存操作
+- `go`: 并发执行可能导致不确定性
+- `select`: 与goroutine配合使用可能带来不确定性
+- `chan`: 通道操作可能带来并发问题
+- `goto`: 无序跳转可能带来逻辑混乱
+- `map`: 可能导致内存使用不可控
+- `cap`: 可能用于不确定的内存操作
+
 ### 3.2 关键字处理流程
 
 #### 3.2.1 AST分析
 在编译阶段，关键字处理器会对合约源代码进行AST（抽象语法树）分析：
 - 遍历所有节点，识别关键字使用情况
-- 对于禁止关键字，直接拒绝合约部署
-- 对于限制关键字，检查使用上下文是否安全
+- 对于白名单之外的关键字，直接拒绝合约部署
 
-#### 3.2.2 安全检查
-对于限制关键字，进行以下安全检查：
-- `map`使用时检查键值类型是否为基本类型
-- `cap`使用时检查参数是否为已知大小的类型
-
-#### 3.2.3 错误处理
+#### 3.2.2 错误处理
 当发现违规关键字使用时：
 - 生成详细的错误信息，包括违规位置和原因
 - 拒绝合约部署
@@ -113,12 +103,6 @@ ABI生成器会提取以下元数据：
 type ABIGenerator interface {
     // GenerateABI 从合约源代码生成ABI
     GenerateABI(sourceCode string) (*ABI, error)
-    
-    // ValidateABI 验证ABI的正确性
-    ValidateABI(abi *ABI) error
-    
-    // SerializeABI 将ABI序列化为JSON格式
-    SerializeABI(abi *ABI) ([]byte, error)
 }
 ```
 
@@ -127,30 +111,10 @@ type ABIGenerator interface {
 type KeywordProcessor interface {
     // ProcessKeywords 分析并处理合约中的关键字
     ProcessKeywords(sourceCode string) error
-    
-    // IsKeywordAllowed 检查关键字是否被允许使用
-    IsKeywordAllowed(keyword string) bool
-    
-    // GetKeywordCategory 获取关键字的分类
-    GetKeywordCategory(keyword string) KeywordCategory
-    
-    // GetKeywordRestrictions 获取关键字的使用限制
-    GetKeywordRestrictions(keyword string) []string
 }
 ```
 
-### 4.3 关键字分类枚举
-```go
-type KeywordCategory int
-
-const (
-    KeywordForbidden KeywordCategory = iota
-    KeywordRestricted
-    KeywordAllowed
-)
-```
-
-### 4.4 集成到编译流程
+### 4.3 集成到编译流程
 ABI生成和关键字处理集成到合约编译流程中：
 1. 源代码解析为AST
 2. 关键字处理器分析AST，检查关键字使用
@@ -180,4 +144,3 @@ ABI生成和关键字处理集成到合约编译流程中：
 ### 6.2 版本兼容性
 - ABI格式保持向后兼容
 - 对于不兼容的变更，提供版本迁移工具
-- 在合约部署时检查ABI版本兼容性

@@ -13,7 +13,7 @@
 BlockHeight() uint64
 
 // BlockTime 获取当前区块时间戳
-BlockTime() int64
+BlockTime() uint64
 
 // ContractAddress 获取当前合约地址
 ContractAddress() Address
@@ -24,10 +24,8 @@ ContractAddress() Address
 ```go
 // Sender 获取交易发送方或合约调用方
 Sender() Address
-
-// Balance 获取账户余额
-Balance(addr Address) uint64
-
+// User 获取交易的发起方
+User() Address
 // Transfer 执行转账操作
 Transfer(from, to Address, amount uint64) error
 ```
@@ -77,9 +75,9 @@ type Object interface {
   Contract() Address
   
   // UpdatedAt 获取对象上次更新时间
-  UpdatedAt() int64
+  UpdatedAt() uint64
   
-  // SetOwner 设置对象所有者，失败时panic
+  // SetOwner 修改对象所有者，失败时panic
   SetOwner(addr Address)
 
   // Get 获取字段值
@@ -96,20 +94,8 @@ type Object interface {
 // Assert 断言函数，条件为假时panic
 func Assert(condition any)
 
-// Error 创建错误
-func Error(msg string) error
-
 // GetHash 计算数据哈希
 func GetHash(data []byte) Hash
-
-// AddressFromString 从字符串创建地址
-func AddressFromString(str string) Address
-
-// ObjectIDFromString 从字符串创建对象ID
-func ObjectIDFromString(str string) ObjectID
-
-// HashFromString 从字符串创建哈希
-func HashFromString(str string) Hash
 ```
 
 ## 5. 智能合约对象存储机制

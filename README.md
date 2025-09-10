@@ -12,7 +12,26 @@
 
 ## 文档
 
+### 架构设计
 - [架构设计](docs/architecture.md)
+- [模块化架构设计](docs/modular_architecture_design.md)
+- [架构缺陷分析](docs/architecture_deficiencies.md)
+- [目录结构说明](docs/00_directory_structure.md)
+
+### 核心模块详细设计
+- [详细设计总览](docs/detailed_design/detailed_design_overview.md)
+- [虚拟机执行引擎](docs/detailed_design/vm_engine_detailed_design.md)
+- [安全审查系统](docs/detailed_design/security_review_detailed_design.md)
+- [编译器模块](docs/detailed_design/compiler_detailed_design.md)
+- [执行环境](docs/detailed_design/execution_environment_detailed_design.md)
+- [Gas计费系统](docs/detailed_design/gas_metering_detailed_design.md)
+- [ABI生成器](docs/detailed_design/abi_generator_detailed_design.md)
+- [合约管理模块](docs/detailed_design/contract_manager_detailed_design.md)
+
+### 流程文档
+- [合约处理流程](docs/detailed_design/contract_processing_flow.md)
+
+### 规范文档
 - [安全审查规范](docs/security_review.md)
 - [默认库接口规范](docs/default_library.md)
 - [执行环境设计](docs/execution_environment.md)

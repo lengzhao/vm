@@ -18,7 +18,7 @@ Gas计费系统通过以下方式实现资源控制：
 
 ### 2.2 接口操作计费
 
-所有的包函数调用都有固定的gas消耗：
+所有的包函数调用都有固定的gas消耗，具体数值在接口模块中定义：
 
 - 基础操作（如查询区块信息）消耗较少gas
 - 存储操作（如创建对象、修改字段）消耗较多gas
@@ -48,6 +48,14 @@ Gas计费系统通过以下方式实现资源控制：
 | Balance() | 5 |
 | Transfer() | 20 |
 | Log() | 2 |
+| CreateObject() | 50 |
+| GetObject() | 10 |
+| GetObjectWithOwner() | 15 |
+| DeleteObject() | 10 |
+| Object.Get() | 5 |
+| Object.Set() | 10 |
+| Object.SetOwner() | 10 |
+| Call() | 30 |
 
 ### 3.3 对象存储接口Gas消耗
 
@@ -81,27 +89,13 @@ Gas计费系统通过以下方式实现资源控制：
 1. 监控Gas消耗
 2. 当接近限制时，触发预警
 3. 超过限制时，立即停止执行
-4. 回滚已执行的操作
-5. 返回Gas不足错误
+4. 所有状态操作都是缓存到内存中，全部正确执行后，才会提交到数据库
+5. 如果异常，则不提交，相当于回滚了
+6. 返回Gas不足错误
 
-## 5. Gas预估与优化
+## 5. 实现细节
 
-### 5.1 Gas预估机制
-
-- 提供静态分析工具预估合约执行所需Gas
-- 在合约部署时进行Gas消耗分析
-- 为用户提供Gas消耗参考值
-
-### 5.2 Gas优化建议
-
-- 避免不必要的循环和递归
-- 减少存储操作次数
-- 合理使用跨合约调用
-- 优化数据结构以减少内存使用
-
-## 6. 实现细节
-
-### 6.1 Gas计数器
+### 5.1 Gas计数器
 
 Gas计数器在合约执行过程中跟踪已消耗的Gas数量：
 
@@ -113,7 +107,7 @@ type GasMeter struct {
 }
 ```
 
-### 6.2 Gas消耗函数
+### 5.2 Gas消耗函数
 
 ```go
 func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
@@ -129,7 +123,7 @@ func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
 }
 ```
 
-### 6.3 编译期Gas注入
+### 5.3 编译期Gas注入
 
 在编译阶段，通过AST分析在适当位置插入Gas消耗代码：
 
@@ -137,3 +131,17 @@ func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
 // 插入示例
 gasMeter.ConsumeGas(1, "code line execution")
 ```
+
+## 6. 模块职责划分
+
+### 6.1 Gas计费模块
+Gas计费模块([gas_metering_detailed_design.md](./detailed_design/gas_metering_detailed_design.md))负责基础的Gas计量功能：
+- 设置Gas限制
+- 跟踪Gas消耗
+- 超限时处理（panic）
+
+### 6.2 接口模块
+接口模块负责具体的Gas消耗数值计算：
+- 根据操作类型确定Gas消耗量
+- 在接口函数调用时消耗相应Gas
+- 提供Gas估算功能
