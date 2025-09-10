@@ -15,6 +15,8 @@
 2. **明确接口设计**：定义标准化的接口，提高系统的可维护性
 3. **简化依赖关系**：通过接口抽象，简化模块间的依赖关系
 4. **增强扩展性**：设计易于扩展的架构，支持新功能的快速集成
+5. **简化模块结构**：合并功能重叠的模块，减少系统复杂性
+6. **接口简化**：精简各模块接口，只保留核心功能方法
 
 ## 3. 整体架构设计
 
@@ -29,8 +31,7 @@ graph LR
     C --> F[执行环境模块]
     C --> G[Gas计费模块]
     C --> H[ABI生成模块]
-    C --> I[存储管理模块]
-    C --> J[合约管理模块]
+    C --> I[合约管理模块]
     
     D --> K[关键字分析器]
     D --> L[导入检查器]
@@ -48,10 +49,7 @@ graph LR
     H --> U[函数识别器]
     H --> V[类型分析器]
     
-    I --> W[文件存储适配器]
-    I --> X[对象存储管理器]
-    
-    J --> Y[合约部署器]
+    I --> Y[合约部署器]
     
     subgraph "核心模块层"
         C
@@ -64,7 +62,6 @@ graph LR
         G
         H
         I
-        J
     end
     
     subgraph "子组件层"
@@ -79,8 +76,6 @@ graph LR
         T
         U
         V
-        W
-        X
         Y
     end
 ```
@@ -124,21 +119,16 @@ type VMEngine interface {
 
 ```go
 // SecurityReviewer 安全审查模块接口
+// 根据简化设计原则，接口已精简为核心功能
 type SecurityReviewer interface {
     // Review 对合约源代码进行安全审查
-    Review(sourceCode string) (*ReviewResult, error)
+    Review(sourceCode string) error
     
     // IsKeywordAllowed 检查关键字是否被允许
     IsKeywordAllowed(keyword string) bool
     
     // IsImportAllowed 检查导入是否被允许
     IsImportAllowed(importPath string) bool
-    
-    // AddForbiddenKeyword 添加禁止关键字
-    AddForbiddenKeyword(keyword string)
-    
-    // AddAllowedImport 添加允许导入
-    AddAllowedImport(importPath string)
 }
 ```
 
@@ -148,18 +138,13 @@ type SecurityReviewer interface {
 
 ```go
 // ContractCompiler 编译器模块接口
+// 根据简化设计原则，接口已精简为核心功能
 type ContractCompiler interface {
     // Compile 编译源代码
-    Compile(sourceCode string) (*CompilationResult, error)
+    Compile(sourceCode string) (CompiledContract, error)
     
     // Validate 验证源代码
     Validate(sourceCode string) error
-    
-    // InjectGasMetering 注入Gas计费代码
-    InjectGasMetering(sourceCode string) (string, error)
-    
-    // GenerateMainFunction 生成Main函数
-    GenerateMainFunction(sourceCode string) (string, error)
 }
 ```
 
@@ -170,16 +155,10 @@ type ContractCompiler interface {
 根据当前需求，执行器暂时不需要复杂实现，只需要有对应的接口，用cmd调用合约就行。
 
 ```go
-// ExecutionEnvironment 执行环境模块接口
+// ExecutionEnvironment 执行环境模块接口（简化版）
 type ExecutionEnvironment interface {
     // Run 在执行环境中运行合约
-    Run(contract CompiledContract, function string, args ...interface{}) (*ExecutionResult, error)
-    
-    // SetResourceLimit 设置资源限制
-    SetResourceLimit(limit ResourceLimit)
-    
-    // GetResourceUsage 获取资源使用情况
-    GetResourceUsage() ResourceUsage
+    Run(contractPath string, function string, args ...interface{}) ([]byte, error)
 }
 ```
 
@@ -188,16 +167,13 @@ type ExecutionEnvironment interface {
 负责Gas的计量和管理。
 
 ```go
-// GasMetering Gas计费模块接口
+// GasMetering Gas计费模块接口（简化版）
 type GasMetering interface {
     // ConsumeGas 消耗Gas
-    ConsumeGas(amount uint64, description string) error
+    ConsumeGas(amount uint64) error
     
     // GetConsumedGas 获取已消耗的Gas
     GetConsumedGas() uint64
-    
-    // GetRemainingGas 获取剩余Gas
-    GetRemainingGas() uint64
     
     // SetGasLimit 设置Gas限制
     SetGasLimit(limit uint64)
@@ -210,72 +186,38 @@ type GasMetering interface {
 
 ```go
 // ABIGenerator ABI生成模块接口
+// 根据简化设计原则，接口已精简为核心功能
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
-    Generate(sourceCode string) (*ABI, error)
-    
-    // Validate 验证ABI的正确性
-    Validate(abi *ABI) error
-    
-    // Serialize 序列化ABI
-    Serialize(abi *ABI) ([]byte, error)
+    Generate(sourceCode string) (ABI, error)
 }
 ```
 
-### 4.7 存储管理模块 (StorageManager)
+### 4.7 合约管理模块 (ContractManager)
 
-负责合约和相关数据的存储管理。
-
-```go
-// StorageManager 存储管理模块接口
-type StorageManager interface {
-    // StoreContract 存储合约
-    StoreContract(contract CompiledContract) (Address, error)
-    
-    // LoadContract 加载合约
-    LoadContract(address Address) (CompiledContract, error)
-    
-    // DeleteContract 删除合约
-    DeleteContract(address Address) error
-    
-    // StoreABI 存储ABI
-    StoreABI(address Address, abi ABI) error
-    
-    // LoadABI 加载ABI
-    LoadABI(address Address) (ABI, error)
-    
-    // GetContractPath 获取合约存储路径
-    GetContractPath(address Address) string
-}
-```
-
-对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
-
-### 4.8 合约管理模块 (ContractManager)
-
-负责合约的生命周期管理。
+负责合约的生命周期管理和存储管理。
 
 合约部署成功后，会生成两个部分：
 1. **可以被import的合约模块**：包含合约的源代码，供其他合约通过import语句引用和复用合约功能
 2. **可以被调用的合约程序**：包含编译后的可执行二进制文件，供外部系统通过虚拟机引擎调用执行
 
+对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
+
+根据简化设计原则，合约管理模块已整合存储管理功能，并精简了接口。
+
 ```go
 // ContractManager 合约管理模块接口
+// 根据简化设计原则，接口已精简为核心功能
+// 存储管理功能已整合到合约管理模块中
 type ContractManager interface {
     // Deploy 部署合约
     Deploy(contract CompiledContract) (Address, error)
     
-    // Undeploy 卸载合约
-    Undeploy(address Address) error
-    
     // GetContract 获取合约
     GetContract(address Address) (CompiledContract, error)
     
-    // ListContracts 列出所有合约
-    ListContracts(offset,limit int) ([]Address, error)
-    
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address Address) (ContractStatus, error)
+    // GetContractABI 获取合约ABI
+    GetContractABI(address Address) (ABI, error)
 }
 ```
 
@@ -293,7 +235,6 @@ type vmEngineImpl struct {
     executionEnv     ExecutionEnvironment
     gasMetering      GasMetering
     abiGenerator     ABIGenerator
-    storageManager   StorageManager
     contractManager  ContractManager
 }
 
@@ -305,7 +246,6 @@ func NewVMEngine() VMEngine {
         executionEnv:     NewExecutionEnvironment(),
         gasMetering:      NewGasMetering(),
         abiGenerator:     NewABIGenerator(),
-        storageManager:   NewStorageManager(),
         contractManager:  NewContractManager(),
     }
 }

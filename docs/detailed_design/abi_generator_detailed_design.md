@@ -69,9 +69,10 @@ type Parameter struct {
 #### 3.2.1 ABIGenerator 接口
 ```go
 // ABIGenerator ABI生成模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
-    Generate(sourceCode string) (*ABI, error)
+    Generate(sourceCode string) (ABI, error)
 }
 ```
 

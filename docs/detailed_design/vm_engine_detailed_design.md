@@ -28,8 +28,7 @@ A --> C[编译器模块]
 A --> D[执行环境模块]
 A --> E[Gas计费模块]
 A --> F[ABI生成模块]
-A --> G[存储管理模块]
-A --> H[合约管理模块]
+A --> G[合约管理模块]
 ```
 
 ## 3. 详细设计
@@ -44,7 +43,6 @@ type VMEngine struct {
     executionEnv     ExecutionEnvironment
     gasMetering      GasMetering
     abiGenerator     ABIGenerator
-    storageManager   StorageManager
     contractManager  ContractManager
     config           VMConfig
 }
@@ -91,9 +89,6 @@ type VMEngine interface {
     // GetContractABI 获取合约ABI
     GetContractABI(address ContractAddress) (ABI, error)
     
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
-    
     // GetVersion 获取虚拟机版本
     GetVersion() string
 }
@@ -120,9 +115,8 @@ graph TD
 A[输入编译合约] --> B[合约管理模块]
 B --> C{验证通过?}
 C --> |否| D[返回错误]
-C --> |是| E[存储管理模块]
-E --> F[存储合约]
-F --> G[返回合约地址]
+C --> |是| E[存储合约]
+E --> F[返回合约地址]
 ```
 
 #### 3.3.3 执行流程
@@ -153,7 +147,6 @@ func NewVMEngine() VMEngine {
         executionEnv:     NewExecutionEnvironment(),
         gasMetering:      NewGasMetering(),
         abiGenerator:     NewABIGenerator(),
-        storageManager:   NewStorageManager(),
         contractManager:  NewContractManager(),
     }
 }
@@ -387,6 +380,12 @@ type VMLogger struct {
 - 获取执行结果和Gas消耗
 - 处理执行异常
 
+### 10.4 与合约管理模块的交互
+虚拟机引擎调用合约管理模块进行合约的存储和管理：
+- 合约部署和存储
+- 合约加载和查询
+- 合约ABI管理
+
 ## 11. 附录
 
 ### 11.1 接口依赖关系
@@ -397,8 +396,7 @@ A --> C[ContractCompiler]
 A --> D[ExecutionEnvironment]
 A --> E[GasMetering]
 A --> F[ABIGenerator]
-A --> G[StorageManager]
-A --> H[ContractManager]
+A --> G[ContractManager]
 ```
 
 ### 11.2 数据传输对象
@@ -437,4 +435,3 @@ func DefaultVMConfig() VMConfig {
         ContractStorageDir:   "./contracts",
     }
 }
-```

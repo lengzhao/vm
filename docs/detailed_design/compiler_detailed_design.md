@@ -21,7 +21,7 @@
 - 生成可执行文件
 
 ### 2.2 架构图
-```mermaid
+``mermaid
 graph TD
 A[编译器模块] --> B[TinyGo编译器适配器]
 A --> C[Gas注入器]
@@ -90,25 +90,20 @@ type CompilationResult struct {
 #### 3.2.1 ContractCompiler 接口
 ```go
 // ContractCompiler 编译器模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
 type ContractCompiler interface {
     // Compile 编译源代码
-    Compile(sourceCode string) (*CompilationResult, error)
+    Compile(sourceCode string) (CompiledContract, error)
     
     // Validate 验证源代码
     Validate(sourceCode string) error
-    
-    // InjectGasMetering 注入Gas计费代码
-    InjectGasMetering(sourceCode string) (string, error)
-    
-    // GenerateMainFunction 生成Main函数
-    GenerateMainFunction(sourceCode string) (string, error)
 }
 ```
 
 ### 3.3 核心功能实现
 
 #### 3.3.1 编译流程
-```mermaid
+``mermaid
 graph TD
 A[输入源代码] --> B[源代码验证]
 B --> C[Gas代码注入]
@@ -120,7 +115,7 @@ G --> H[返回编译结果]
 ```
 
 #### 3.3.2 Gas注入流程
-```mermaid
+``mermaid
 graph TD
 A[源代码] --> B[AST分析]
 B --> C[识别代码块]
@@ -129,7 +124,7 @@ D --> E[返回注入后的代码]
 ```
 
 #### 3.3.3 Main函数生成流程
-```mermaid
+``mermaid
 graph TD
 A[源代码] --> B[函数识别]
 B --> C[生成Main函数]
@@ -311,7 +306,7 @@ type CompileError struct {
 - Linux/Unix 环境
 
 ### 10.2 配置管理
-```yaml
+``yaml
 compiler:
   enable_gas_injection: true
   tinygo_path: "/usr/local/bin/tinygo"

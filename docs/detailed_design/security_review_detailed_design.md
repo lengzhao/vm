@@ -82,21 +82,16 @@ type ReviewResult struct {
 #### 3.2.1 SecurityReviewer 接口
 ```go
 // SecurityReviewer 安全审查模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
 type SecurityReviewer interface {
     // Review 对合约源代码进行安全审查
-    Review(sourceCode string) (*ReviewResult, error)
+    Review(sourceCode string) error
     
     // IsKeywordAllowed 检查关键字是否被允许
     IsKeywordAllowed(keyword string) bool
     
     // IsImportAllowed 检查导入是否被允许
     IsImportAllowed(importPath string) bool
-    
-    // AddForbiddenKeyword 添加禁止关键字
-    AddForbiddenKeyword(keyword string)
-    
-    // AddAllowedImport 添加允许导入
-    AddAllowedImport(importPath string)
 }
 ```
 

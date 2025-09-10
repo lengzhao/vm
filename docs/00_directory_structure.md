@@ -6,7 +6,7 @@
 
 ## 2. 目录结构
 
-```
+```text
 docs/
 ├── 00_directory_structure.md    # 文档目录结构说明
 ├── architecture.md              # 系统架构设计文档
@@ -24,8 +24,7 @@ docs/
     ├── execution_environment_detailed_design.md # 执行环境详细设计
     ├── gas_metering_detailed_design.md    # Gas计费系统详细设计
     ├── abi_generator_detailed_design.md   # ABI生成器详细设计
-    ├── storage_manager_detailed_design.md # 存储管理模块详细设计
-    ├── contract_manager_detailed_design.md # 合约管理模块详细设计
+    ├── contract_manager_detailed_design.md # 合约管理模块详细设计（包含原存储管理功能）
     └── contract_processing_flow.md        # 合约处理流程
 ```
 
@@ -43,8 +42,7 @@ docs/
 - [execution_environment_detailed_design.md](detailed_design/execution_environment_detailed_design.md) - 执行环境详细设计
 - [gas_metering_detailed_design.md](detailed_design/gas_metering_detailed_design.md) - Gas计费系统详细设计
 - [abi_generator_detailed_design.md](detailed_design/abi_generator_detailed_design.md) - ABI生成器详细设计
-- [storage_manager_detailed_design.md](detailed_design/storage_manager_detailed_design.md) - 存储管理模块详细设计
-- [contract_manager_detailed_design.md](detailed_design/contract_manager_detailed_design.md) - 合约管理模块详细设计
+- [contract_manager_detailed_design.md](detailed_design/contract_manager_detailed_design.md) - 合约管理模块详细设计（包含原存储管理功能）
 
 ### 3.3 规范文档
 - [default_library.md](default_library.md) - 默认库接口规范

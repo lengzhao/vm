@@ -19,9 +19,10 @@
 - 合约卸载
 - 合约状态管理
 - 合约查询
+- 合约存储管理
 
 ### 2.2 架构图
-```mermaid
+``mermaid
 graph TD
 A[合约管理模块] --> B[合约部署器]
 B --> C[部署验证器]
@@ -36,7 +37,6 @@ B --> C[部署验证器]
 type ContractManager struct {
     config ContractConfig
     deployer *ContractDeployer
-    storage StorageManager
 }
 ```
 
@@ -69,30 +69,17 @@ const (
 #### 3.2.1 ContractManager 接口
 ```go
 // ContractManager 合约管理模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
+// 存储管理功能已整合到合约管理模块中
 type ContractManager interface {
     // Deploy 部署合约
     Deploy(contract CompiledContract) (ContractAddress, error)
     
-    // Undeploy 卸载合约
-    Undeploy(address ContractAddress) error
-    
     // GetContract 获取合约
     GetContract(address ContractAddress) (CompiledContract, error)
     
-    // ListContracts 列出所有合约
-    ListContracts(offset,limit int) ([]ContractAddress, error)
-    
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
-    
-    // SetContractStatus 设置合约状态
-    SetContractStatus(address ContractAddress, status ContractStatus) error
-    
-    // UpgradeContract 升级合约
-    UpgradeContract(address ContractAddress, newContract CompiledContract) error
-    
-    // GetContractInfo 获取合约信息
-    GetContractInfo(address ContractAddress) *ContractInfo
+    // GetContractABI 获取合约ABI
+    GetContractABI(address ContractAddress) (ABI, error)
 }
 ```
 
@@ -165,7 +152,7 @@ type ContractDeployer interface {
 ## 5. 合约状态管理
 
 ### 5.1 状态转换图
-```mermaid
+``mermaid
 graph TD
 A[Unknown] --> B[Deployed]
 B --> C[Suspended]
@@ -207,7 +194,7 @@ type StatusTransition struct {
 ## 6. 合约升级机制
 
 ### 6.1 升级流程
-```mermaid
+``mermaid
 graph TD
 A[请求合约升级] --> B[验证权限]
 B --> C[验证新合约]
@@ -355,15 +342,11 @@ type ContractManagerStats struct {
 // VMEngineConfig 虚拟机引擎配置
 type VMEngineConfig struct {
     ContractManager    ContractManager  // 合约管理模块
-    StorageManager     StorageManager   // 存储管理模块
     // 其他模块...
 }
 ```
 
-### 11.2 与存储管理模块的交互
-合约管理模块需要与存储管理模块协作，实现合约的持久化存储。
-
-### 11.3 数据传输对象
+### 11.2 数据传输对象
 ```go
 // 合约部署请求
 type DeployContractRequest struct {
@@ -433,6 +416,5 @@ type DeploymentValidationConfig struct {
 graph TD
 A[VMEngine] --> B[ContractManager]
 B --> C[ContractDeployer]
-B --> D[StorageManager]
 C --> E[部署验证器]
 ```

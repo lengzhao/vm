@@ -26,8 +26,7 @@ graph LR
     C --> F[执行环境模块]
     C --> G[Gas计费模块]
     C --> H[ABI生成模块]
-    C --> I[存储管理模块]
-    C --> J[合约管理模块]
+    C --> I[合约管理模块]
     
     D --> K[关键字分析器]
     D --> L[导入检查器]
@@ -45,10 +44,7 @@ graph LR
     H --> U[函数识别器]
     H --> V[类型分析器]
     
-    I --> W[文件存储适配器]
-    I --> X[对象存储管理器]
-    
-    J --> Y[合约部署器]
+    I --> Y[合约部署器]
     
     subgraph "核心模块层"
         C
@@ -61,7 +57,6 @@ graph LR
         G
         H
         I
-        J
     end
     
     subgraph "子组件层"
@@ -76,8 +71,6 @@ graph LR
         T
         U
         V
-        W
-        X
         Y
     end
 ```
@@ -112,9 +105,6 @@ type VMEngine interface {
     // GetContractABI 获取合约ABI
     GetContractABI(address ContractAddress) (ABI, error)
     
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
-    
     // GetVersion 获取虚拟机版本
     GetVersion() string
 }
@@ -131,21 +121,16 @@ type VMEngine interface {
 ##### 2.2.2.2 接口设计
 ``go
 // SecurityReviewer 安全审查模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
 type SecurityReviewer interface {
     // Review 对合约源代码进行安全审查
-    Review(sourceCode string) (*ReviewResult, error)
+    Review(sourceCode string) error
     
     // IsKeywordAllowed 检查关键字是否被允许
     IsKeywordAllowed(keyword string) bool
     
     // IsImportAllowed 检查导入是否被允许
     IsImportAllowed(importPath string) bool
-    
-    // AddForbiddenKeyword 添加禁止关键字
-    AddForbiddenKeyword(keyword string)
-    
-    // AddAllowedImport 添加允许导入
-    AddAllowedImport(importPath string)
 }
 ```
 
@@ -161,18 +146,13 @@ type SecurityReviewer interface {
 ##### 2.2.3.2 接口设计
 ``go
 // ContractCompiler 编译器模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
 type ContractCompiler interface {
     // Compile 编译源代码
-    Compile(sourceCode string) (*CompilationResult, error)
+    Compile(sourceCode string) (CompiledContract, error)
     
     // Validate 验证源代码
     Validate(sourceCode string) error
-    
-    // InjectGasMetering 注入Gas计费代码
-    InjectGasMetering(sourceCode string) (string, error)
-    
-    // GenerateMainFunction 生成Main函数
-    GenerateMainFunction(sourceCode string) (string, error)
 }
 ```
 
@@ -191,16 +171,7 @@ type ContractCompiler interface {
 // ExecutionEnvironment 执行环境模块接口（与架构文档保持一致）
 type ExecutionEnvironment interface {
     // Run 在执行环境中运行合约
-    Run(contract CompiledContract, function string, args ...interface{}) (*ExecutionResult, error)
-    
-    // SetResourceLimit 设置资源限制
-    SetResourceLimit(limit ResourceLimit)
-    
-    // GetResourceUsage 获取资源使用情况
-    GetResourceUsage() ResourceUsage
-    
-    // Stop 停止执行环境
-    Stop() error
+    Run(contractPath string, function string, args ...interface{}) ([]byte, error)
 }
 ```
 
@@ -218,22 +189,13 @@ Gas计费模块通过计费机制防止合约执行消耗过多系统资源。
 // GasMetering Gas计费模块接口（与架构文档保持一致）
 type GasMetering interface {
     // ConsumeGas 消耗Gas
-    ConsumeGas(amount uint64, description string) error
+    ConsumeGas(amount uint64) error
     
     // GetConsumedGas 获取已消耗的Gas
     GetConsumedGas() uint64
     
-    // GetRemainingGas 获取剩余Gas
-    GetRemainingGas() uint64
-    
     // SetGasLimit 设置Gas限制
     SetGasLimit(limit uint64)
-    
-    // Enable 启用Gas计量
-    Enable()
-    
-    // Disable 禁用Gas计量
-    Disable()
 }
 ```
 
@@ -249,80 +211,39 @@ ABI生成模块在合约编译阶段自动生成ABI（Application Binary Interfa
 ##### 2.2.6.2 接口设计
 ``go
 // ABIGenerator ABI生成模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
-    Generate(sourceCode string) (*ABI, error)
-    
-    // Validate 验证ABI的正确性
-    Validate(abi *ABI) error
-    
-    // Serialize 序列化ABI
-    Serialize(abi *ABI) ([]byte, error)
+    Generate(sourceCode string) (ABI, error)
 }
 ```
 
-#### 2.2.7 存储管理模块
-存储管理模块负责合约和相关数据的存储管理。
+#### 2.2.7 合约管理模块
+合约管理模块负责合约的生命周期管理和存储管理。
 
 ##### 2.2.7.1 功能描述
-- 管理合约可执行文件的存储
-- 管理合约ABI的存储
-- 管理智能合约对象的存储
-- 提供存储访问控制
+- 管理合约的部署和卸载
+- 跟踪合约状态
+- 提供合约查询功能
+- 支持合约升级机制
+- 管理合约和相关数据的存储
 
 对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
 
 ##### 2.2.7.2 接口设计
 ``go
-// StorageManager 存储管理模块接口（与架构文档保持一致）
-type StorageManager interface {
-    // StoreContract 存储合约
-    StoreContract(contract CompiledContract) (ContractAddress, error)
-    
-    // LoadContract 加载合约
-    LoadContract(address ContractAddress) (CompiledContract, error)
-    
-    // DeleteContract 删除合约
-    DeleteContract(address ContractAddress) error
-    
-    // StoreABI 存储ABI
-    StoreABI(address ContractAddress, abi ABI) error
-    
-    // LoadABI 加载ABI
-    LoadABI(address ContractAddress) (ABI, error)
-    
-    // GetContractPath 获取合约存储路径
-    GetContractPath(address ContractAddress) string
-}
-```
-
-#### 2.2.8 合约管理模块
-合约管理模块负责合约的生命周期管理。
-
-##### 2.2.8.1 功能描述
-- 管理合约的部署和卸载
-- 跟踪合约状态
-- 提供合约查询功能
-- 支持合约升级机制
-
-##### 2.2.8.2 接口设计
-``go
 // ContractManager 合约管理模块接口（与架构文档保持一致）
+// 根据简化设计原则，接口已精简为核心功能
+// 存储管理功能已整合到合约管理模块中
 type ContractManager interface {
     // Deploy 部署合约
     Deploy(contract CompiledContract) (ContractAddress, error)
     
-    // Undeploy 卸载合约
-    Undeploy(address ContractAddress) error
-    
     // GetContract 获取合约
     GetContract(address ContractAddress) (CompiledContract, error)
     
-    // ListContracts 列出所有合约
-    ListContracts(offset,limit int) ([]ContractAddress, error)
-    
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
+    // GetContractABI 获取合约ABI
+    GetContractABI(address ContractAddress) (ABI, error)
 }
 ```
 
@@ -339,7 +260,6 @@ type vmEngineImpl struct {
     executionEnv     ExecutionEnvironment
     gasMetering      GasMetering
     abiGenerator     ABIGenerator
-    storageManager   StorageManager
     contractManager  ContractManager
 }
 
@@ -351,7 +271,6 @@ func NewVMEngine() VMEngine {
         executionEnv:     NewExecutionEnvironment(),
         gasMetering:      NewGasMetering(),
         abiGenerator:     NewABIGenerator(),
-        storageManager:   NewStorageManager(),
         contractManager:  NewContractManager(),
     }
 }
@@ -371,9 +290,6 @@ type CompiledContract struct {
     
     // 编译时间
     CompileTime time.Time
-    
-    // Gas价格
-    GasPrice uint64
     
     // 源代码哈希
     SourceHash string
@@ -680,8 +596,7 @@ type ResourceUsage struct {
 4. [执行环境模块详细设计](execution_environment_detailed_design.md)
 5. [Gas计费系统详细设计](gas_metering_detailed_design.md)
 6. [ABI生成器详细设计](abi_generator_detailed_design.md)
-7. [存储管理模块详细设计](storage_manager_detailed_design.md)
-8. [合约管理模块详细设计](contract_manager_detailed_design.md)
+7. [合约管理模块详细设计](contract_manager_detailed_design.md)
 
 ### 14.3 参考文献
 - [架构设计文档](../modular_architecture_design.md)
