@@ -103,12 +103,6 @@ ABI生成器会提取以下元数据：
 type ABIGenerator interface {
     // GenerateABI 从合约源代码生成ABI
     GenerateABI(sourceCode string) (*ABI, error)
-    
-    // ValidateABI 验证ABI的正确性
-    ValidateABI(abi *ABI) error
-    
-    // SerializeABI 将ABI序列化为JSON格式
-    SerializeABI(abi *ABI) ([]byte, error)
 }
 ```
 
@@ -117,15 +111,6 @@ type ABIGenerator interface {
 type KeywordProcessor interface {
     // ProcessKeywords 分析并处理合约中的关键字
     ProcessKeywords(sourceCode string) error
-    
-    // IsKeywordAllowed 检查关键字是否被允许使用
-    IsKeywordAllowed(keyword string) bool
-    
-    // GetAllowedKeywords 获取所有允许的关键字列表
-    GetAllowedKeywords() []string
-    
-    // GetForbiddenKeywords 获取所有禁止的关键字列表
-    GetForbiddenKeywords() []string
 }
 ```
 

@@ -21,7 +21,7 @@
 - 提供与外部系统交互的接口
 
 ### 2.2 架构图
-```
+```mermaid
 graph TD
 A[VM Engine] --> B[安全审查模块]
 A --> C[编译器模块]
@@ -50,20 +50,7 @@ type VMEngine struct {
 }
 ```
 
-#### 3.1.2 VMEngineConfig 配置结构
-```go
-type VMEngineConfig struct {
-    SecurityReviewer   SecurityReviewer
-    ContractCompiler   ContractCompiler
-    ExecutionEnv       ExecutionEnvironment
-    GasMetering        GasMetering
-    ABIGenerator       ABIGenerator
-    StorageManager     StorageManager
-    ContractManager    ContractManager
-}
-```
-
-#### 3.1.3 VMConfig 配置结构
+#### 3.1.2 VMConfig 配置结构
 ```go
 type VMConfig struct {
     // 最大Gas限制
@@ -154,20 +141,20 @@ H --> |否| J[返回错误和Gas消耗]
 
 ## 4. 模块交互设计
 
-### 4.1 依赖注入机制
-虚拟机引擎通过依赖注入方式管理各功能模块：
+### 4.1 模块初始化
+虚拟机引擎在初始化时创建各功能模块的实例：
 
 ```go
 // NewVMEngine 创建新的虚拟机引擎实例
-func NewVMEngine(config VMEngineConfig) VMEngine {
+func NewVMEngine() VMEngine {
     return &vmEngineImpl{
-        securityReviewer: config.SecurityReviewer,
-        compiler:         config.ContractCompiler,
-        executionEnv:     config.ExecutionEnv,
-        gasMetering:      config.GasMetering,
-        abiGenerator:     config.ABIGenerator,
-        storageManager:   config.StorageManager,
-        contractManager:  config.ContractManager,
+        securityReviewer: NewSecurityReviewer(),
+        compiler:         NewContractCompiler(),
+        executionEnv:     NewExecutionEnvironment(),
+        gasMetering:      NewGasMetering(),
+        abiGenerator:     NewABIGenerator(),
+        storageManager:   NewStorageManager(),
+        contractManager:  NewContractManager(),
     }
 }
 ```
@@ -211,6 +198,9 @@ type CompilationResult struct {
     
     // 错误信息
     Error error
+    
+    // 编译时间
+    CompileTime time.Duration
 }
 ```
 
@@ -234,209 +224,172 @@ type ExecutionResult struct {
 }
 ```
 
-## 5. 模块设计
+## 5. 安全设计
 
-### 5.1 虚拟机核心引擎模块
+### 5.1 执行环境
+通过执行环境模块提供基础的执行环境：
+- 通过命令行接口执行合约程序
+- 实施基础的资源限制，防止资源耗尽攻击
+- 提供安全的默认库接口
 
-#### 5.1.1 功能描述
-作为系统的入口点和协调者，负责协调各功能模块的工作。
+根据当前需求，执行器暂时不需要复杂实现，只需要有对应的接口，用cmd调用合约就行。
 
-#### 5.1.2 接口设计
-```go
-type VMEngine interface {
-    // Compile 编译合约源代码
-    Compile(sourceCode string) (CompiledContract, error)
-    
-    // Deploy 部署合约
-    Deploy(contract CompiledContract) (ContractAddress, error)
-    
-    // Execute 执行合约函数
-    Execute(address ContractAddress, function string, args ...interface{}) ([]byte, error)
-    
-    // Stop 停止虚拟机
-    Stop() error
-    
-    // GetContractABI 获取合约ABI
-    GetContractABI(address ContractAddress) (ABI, error)
-    
-    // GetContractStatus 获取合约状态
-    GetContractStatus(address ContractAddress) (ContractStatus, error)
-    
-    // GetVersion 获取虚拟机版本
-    GetVersion() string
-}
-```
+### 5.2 Gas计费
+通过Gas计费模块防止合约执行消耗过多系统资源：
+- 跟踪和控制Gas消耗
+- 实施Gas限制检查
+- 超限时终止执行
 
-#### 5.1.3 实现细节
-1. 通过依赖注入管理各功能模块
-2. 协调各模块间的工作流程
-3. 提供统一的外部接口
-4. 处理模块间的错误传递和异常处理
+### 5.3 关键字审查
+通过安全审查模块确保合约代码的安全性：
+- 审查并禁止使用危险关键字
+- 检查导入列表，仅允许导入指定的安全库
+- 提供关键字白名单机制
 
-## 6. 安全设计
+## 6. 性能优化
 
-### 6.1 输入验证
-所有输入都经过严格验证，防止恶意输入导致系统异常。
+### 6.1 编译缓存
+编译器模块实现编译结果缓存：
+- 对已编译的合约进行缓存，避免重复编译
+- 使用源代码哈希作为缓存键
+- 支持缓存清理机制
 
-### 6.2 模块隔离
-通过接口抽象实现模块间隔离，降低耦合度。
+### 6.2 执行缓存
+执行环境模块实现执行结果缓存：
+- 对相同参数的执行结果进行缓存
+- 支持缓存失效机制
+- 提供缓存统计信息
 
-### 6.3 资源限制
-通过Gas计费模块限制合约执行消耗的系统资源。
+### 6.3 并行处理
+支持多个合约同时处理：
+- 编译器模块支持并行编译
+- 执行环境模块支持并行执行
+- 通过对象隔离机制支持交易并行执行
 
-## 7. 性能优化
+## 7. 错误处理
 
-### 7.1 模块缓存
-各功能模块可实现内部缓存机制，提高性能。
-
-### 7.2 并行执行
-支持合约的并行执行以提高系统吞吐量。
-
-### 7.3 资源复用
-通过模块化设计实现资源的复用和共享。
-
-## 8. 错误处理
-
-### 8.1 错误分类
+### 7.1 错误分类
 - 编译错误
 - 部署错误
 - 执行错误
-- 资源错误
-- 模块间通信错误
+- 安全审查错误
+- 系统错误
 
-### 8.2 错误码设计
+### 7.2 错误码设计
 ```go
 const (
     // 编译相关错误
     ErrCompileFailed = 1001
-    ErrInvalidSource = 1002
+    ErrInvalidSourceCode = 1002
     
     // 部署相关错误
-    ErrDeployFailed = 2001
+    ErrDeploymentFailed = 2001
     ErrInvalidContract = 2002
     
     // 执行相关错误
     ErrExecutionFailed = 3001
-    ErrFunctionNotFound = 3002
-    ErrGasExhausted = 3003
+    ErrGasExceeded = 3002
+    ErrFunctionNotFound = 3003
     
-    // 模块相关错误
-    ErrModuleNotInitialized = 4001
-    ErrModuleCommunication = 4002
+    // 安全审查错误
+    ErrSecurityCheckFailed = 4001
+    ErrForbiddenKeyword = 4002
+    ErrForbiddenImport = 4003
     
-    // 资源相关错误
-    ErrResourceLimitExceeded = 5001
+    // 系统相关错误
+    ErrSystemError = 5001
+    ErrTimeout = 5002
 )
 ```
 
-### 8.3 错误传递机制
+### 7.3 错误信息结构
 ```go
 type VMError struct {
     Code     int
     Message  string
-    Module   string
     Details  string
     Err      error
 }
 ```
 
-## 9. 测试设计
+## 8. 测试设计
 
-### 9.1 单元测试
-为每个模块编写单元测试，确保功能正确性。
+### 8.1 单元测试
+为每个核心功能编写单元测试：
+- 编译功能测试
+- 部署功能测试
+- 执行功能测试
+- 安全审查测试
 
-### 9.2 集成测试
-编写集成测试，验证各模块间的协作。
+### 8.2 集成测试
+编写集成测试验证模块间协作：
+- 完整合约处理流程测试
+- 多模块协作测试
+- 异常处理测试
 
-### 9.3 性能测试
-编写性能测试，验证系统的性能指标。
+### 8.3 性能测试
+编写性能测试验证系统性能：
+- 编译性能测试
+- 执行性能测试
+- 并发处理测试
 
-### 9.4 模块化测试支持
-```go
-// Testable 可测试接口
-type Testable interface {
-    // SetupTest 测试设置
-    SetupTest() error
-    
-    // TeardownTest 测试清理
-    TeardownTest() error
-    
-    // RunTest 运行测试
-    RunTest(testName string, testData interface{}) (interface{}, error)
-}
-```
+## 9. 部署与运维
 
-## 10. 部署与运维
-
-### 10.1 部署要求
-- Go 1.16+
-- TinyGo 0.20+
-- Linux/Unix 环境
-
-### 10.2 监控指标
-- 合约编译成功率
-- 合约部署成功率
-- 合约执行成功率
-- 平均执行时间
-- Gas 消耗情况
-- 各模块性能指标
-
-### 10.3 配置管理
-```
+### 9.1 配置管理
+```yaml
 vm:
   max_gas_limit: 10000000
   enable_security_checks: true
   enable_gas_metering: true
-  execution_timeout: 30s
+  execution_timeout: "30s"
   contract_storage_dir: "./contracts"
 ```
 
-## 11. 扩展性设计
+### 9.2 监控指标
+- 合约编译成功率
+- 合约部署成功率
+- 合约执行成功率
+- 平均执行时间
+- Gas消耗情况
+- 各模块性能指标
 
-### 11.1 插件化支持
-通过接口定义实现插件化架构，支持功能模块的动态替换和扩展。
-
-### 11.2 配置管理
-通过统一的配置管理机制支持模块的灵活配置。
-
-### 11.3 模块热插拔
-支持模块的动态加载和卸载。
-
-## 12. 附录
-
-### 12.1 数据结构详细定义
+### 9.3 日志设计
 ```go
-// 合约地址
-type ContractAddress string
-
-// 合约状态
-type ContractStatus int
-
-const (
-    ContractStatusUnknown ContractStatus = iota
-    ContractStatusDeployed
-    ContractStatusSuspended
-    ContractStatusDestroyed
-)
-
-// 资源限制
-type ResourceLimit struct {
-    MaxMemory    uint64 // 最大内存使用量 (bytes)
-    MaxCPU       uint64 // 最大CPU时间 (milliseconds)
-    MaxStorage   uint64 // 最大存储空间 (bytes)
-    MaxNetwork   uint64 // 最大网络流量 (bytes)
-}
-
-// 资源使用情况
-type ResourceUsage struct {
-    MemoryUsage  uint64
-    CPUUsage     uint64
-    StorageUsage uint64
-    NetworkUsage uint64
+type VMLogger struct {
+    // 日志级别
+    Level LogLevel
+    
+    // 日志输出
+    Output io.Writer
+    
+    // 是否启用详细日志
+    Verbose bool
 }
 ```
 
-### 12.2 接口依赖关系
+## 10. 与其他模块的交互
+
+### 10.1 与安全审查模块的交互
+虚拟机引擎调用安全审查模块对合约源代码进行安全检查：
+- 在编译前进行关键字审查
+- 验证导入列表的合法性
+- 提供安全审查结果
+
+### 10.2 与编译器模块的交互
+虚拟机引擎调用编译器模块将源代码编译为可执行文件：
+- 提供源代码进行编译
+- 获取编译结果和ABI信息
+- 处理编译错误
+
+### 10.3 与执行环境模块的交互
+虚拟机引擎调用执行环境模块执行合约：
+- 设置执行参数和资源限制
+- 获取执行结果和Gas消耗
+- 处理执行异常
+
+## 11. 附录
+
+### 11.1 接口依赖关系
 ```mermaid
 graph TD
 A[VMEngine] --> B[SecurityReviewer]
@@ -446,4 +399,42 @@ A --> E[GasMetering]
 A --> F[ABIGenerator]
 A --> G[StorageManager]
 A --> H[ContractManager]
+```
+
+### 11.2 数据传输对象
+```go
+// ContractAddress 合约地址
+type ContractAddress string
+
+// ContractStatus 合约状态
+type ContractStatus int
+
+const (
+    ContractStatusUnknown ContractStatus = iota
+    ContractStatusDeployed
+    ContractStatusSuspended
+    ContractStatusDestroyed
+)
+
+// VMVersion 虚拟机版本信息
+type VMVersion struct {
+    Major int
+    Minor int
+    Patch int
+    Build string
+}
+```
+
+### 11.3 配置示例
+```go
+// DefaultVMConfig 默认虚拟机配置
+func DefaultVMConfig() VMConfig {
+    return VMConfig{
+        MaxGasLimit:          10000000,
+        EnableSecurityChecks: true,
+        EnableGasMetering:    true,
+        ExecutionTimeout:     30 * time.Second,
+        ContractStorageDir:   "./contracts",
+    }
+}
 ```

@@ -40,7 +40,6 @@ graph LR
     F --> Q[资源控制器]
     
     G --> R[Gas计量器]
-    G --> S[Gas策略管理器]
     
     H --> T[AST解析器]
     H --> U[函数识别器]
@@ -50,7 +49,6 @@ graph LR
     I --> X[对象存储管理器]
     
     J --> Y[合约部署器]
-    J --> Z[合约加载器]
     
     subgraph "核心模块层"
         C
@@ -75,14 +73,12 @@ graph LR
         P
         Q
         R
-        S
         T
         U
         V
         W
         X
         Y
-        Z
     end
 ```
 
@@ -98,7 +94,7 @@ graph LR
 - 提供与外部系统交互的接口
 
 ##### 2.2.1.2 接口设计
-```
+``go
 // VMEngine 虚拟机核心引擎接口（与架构文档保持一致）
 type VMEngine interface {
     // Compile 编译合约源代码
@@ -133,7 +129,7 @@ type VMEngine interface {
 - 检查导入列表，仅允许导入指定的安全库
 
 ##### 2.2.2.2 接口设计
-```
+``go
 // SecurityReviewer 安全审查模块接口（与架构文档保持一致）
 type SecurityReviewer interface {
     // Review 对合约源代码进行安全审查
@@ -163,7 +159,7 @@ type SecurityReviewer interface {
 - 生成可执行文件
 
 ##### 2.2.3.2 接口设计
-```
+``go
 // ContractCompiler 编译器模块接口（与架构文档保持一致）
 type ContractCompiler interface {
     // Compile 编译源代码
@@ -181,15 +177,17 @@ type ContractCompiler interface {
 ```
 
 #### 2.2.4 执行环境模块
-执行环境模块提供严格受限的运行环境，防止合约访问宿主系统的敏感资源。
+执行环境模块提供基础的运行环境，通过命令行接口执行合约程序。
 
 ##### 2.2.4.1 功能描述
-- 提供严格受限的运行环境
-- 防止合约访问宿主系统的文件、网络或其他敏感资源
-- 确保合约执行的安全性和隔离性
+- 提供基础的运行环境
+- 通过命令行接口执行合约程序
+- 实施基础的资源限制，确保执行的安全性
+
+根据当前需求，执行器暂时不需要复杂实现，只需要有对应的接口，用cmd调用合约就行。
 
 ##### 2.2.4.2 接口设计
-```
+``go
 // ExecutionEnvironment 执行环境模块接口（与架构文档保持一致）
 type ExecutionEnvironment interface {
     // Run 在执行环境中运行合约
@@ -216,7 +214,7 @@ Gas计费模块通过计费机制防止合约执行消耗过多系统资源。
 - 记录Gas消耗历史
 
 ##### 2.2.5.2 接口设计
-```
+``go
 // GasMetering Gas计费模块接口（与架构文档保持一致）
 type GasMetering interface {
     // ConsumeGas 消耗Gas
@@ -249,7 +247,7 @@ ABI生成模块在合约编译阶段自动生成ABI（Application Binary Interfa
 - 提供ABI验证功能
 
 ##### 2.2.6.2 接口设计
-```
+``go
 // ABIGenerator ABI生成模块接口（与架构文档保持一致）
 type ABIGenerator interface {
     // Generate 从源代码生成ABI
@@ -272,8 +270,10 @@ type ABIGenerator interface {
 - 管理智能合约对象的存储
 - 提供存储访问控制
 
+对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
+
 ##### 2.2.7.2 接口设计
-```
+``go
 // StorageManager 存储管理模块接口（与架构文档保持一致）
 type StorageManager interface {
     // StoreContract 存储合约
@@ -306,7 +306,7 @@ type StorageManager interface {
 - 支持合约升级机制
 
 ##### 2.2.8.2 接口设计
-```
+``go
 // ContractManager 合约管理模块接口（与架构文档保持一致）
 type ContractManager interface {
     // Deploy 部署合约
@@ -328,32 +328,31 @@ type ContractManager interface {
 
 ## 3. 模块间接口设计
 
-### 3.1 依赖关系管理
-通过依赖注入的方式管理模块间的依赖关系，降低耦合度：
+### 3.1 模块间通信
+模块间通过明确定义的接口进行通信，降低耦合度：
 
-```
-// VMEngineConfig 虚拟机引擎配置
-type VMEngineConfig struct {
-    SecurityReviewer   SecurityReviewer
-    ContractCompiler   ContractCompiler
-    ExecutionEnv       ExecutionEnvironment
-    GasMetering        GasMetering
-    ABIGenerator       ABIGenerator
-    StorageManager     StorageManager
-    ContractManager    ContractManager
-    // 其他配置项
+``go
+// VMEngine 虚拟机核心引擎实现
+type vmEngineImpl struct {
+    securityReviewer SecurityReviewer
+    compiler         ContractCompiler
+    executionEnv     ExecutionEnvironment
+    gasMetering      GasMetering
+    abiGenerator     ABIGenerator
+    storageManager   StorageManager
+    contractManager  ContractManager
 }
 
 // NewVMEngine 创建新的虚拟机引擎实例
-func NewVMEngine(config VMEngineConfig) VMEngine {
+func NewVMEngine() VMEngine {
     return &vmEngineImpl{
-        securityReviewer: config.SecurityReviewer,
-        compiler:         config.ContractCompiler,
-        executionEnv:     config.ExecutionEnv,
-        gasMetering:      config.GasMetering,
-        abiGenerator:     config.ABIGenerator,
-        storageManager:   config.StorageManager,
-        contractManager:  config.ContractManager,
+        securityReviewer: NewSecurityReviewer(),
+        compiler:         NewContractCompiler(),
+        executionEnv:     NewExecutionEnvironment(),
+        gasMetering:      NewGasMetering(),
+        abiGenerator:     NewABIGenerator(),
+        storageManager:   NewStorageManager(),
+        contractManager:  NewContractManager(),
     }
 }
 ```
@@ -361,7 +360,7 @@ func NewVMEngine(config VMEngineConfig) VMEngine {
 ### 3.2 数据传输对象
 定义清晰的数据传输对象，确保模块间数据传递的一致性：
 
-```
+``go
 // CompiledContract 编译后的合约
 type CompiledContract struct {
     // 合约可执行文件路径
@@ -434,45 +433,10 @@ type ExecutionResult struct {
 
 ## 4. 扩展性设计
 
-### 4.1 插件化架构
-通过接口定义实现插件化架构，支持功能模块的动态替换和扩展：
-
-```
-// Plugin 插件接口
-type Plugin interface {
-    // Name 插件名称
-    Name() string
-    
-    // Version 插件版本
-    Version() string
-    
-    // Initialize 初始化插件
-    Initialize(config map[string]interface{}) error
-    
-    // Shutdown 关闭插件
-    Shutdown() error
-}
-
-// PluginManager 插件管理器
-type PluginManager interface {
-    // RegisterPlugin 注册插件
-    RegisterPlugin(plugin Plugin) error
-    
-    // UnregisterPlugin 注销插件
-    UnregisterPlugin(name string) error
-    
-    // GetPlugin 获取插件
-    GetPlugin(name string) (Plugin, error)
-    
-    // ListPlugins 列出所有插件
-    ListPlugins() []string
-}
-```
-
-### 4.2 配置管理
+### 4.1 配置管理
 通过统一的配置管理机制支持模块的灵活配置：
 
-```
+``go
 // Config 配置接口
 type Config interface {
     // Get 获取配置项
@@ -504,7 +468,7 @@ func (cm *ConfigManager) GetConfig(module string) Config {
 ### 5.1 模块化测试
 每个模块提供专门的测试接口，支持独立测试：
 
-```
+``go
 // Testable 可测试接口
 type Testable interface {
     // SetupTest 测试设置
@@ -538,12 +502,12 @@ func (mt *ModuleTester) RunModuleTest(testName string, testData interface{}) (in
 ### 6.1 核心数据结构
 
 #### 6.1.1 合约地址
-```
+``go
 type ContractAddress string
 ```
 
 #### 6.1.2 编译后的合约
-```
+``go
 type CompiledContract struct {
     Bytecode []byte
     ABI      ABI
@@ -551,7 +515,7 @@ type CompiledContract struct {
 ```
 
 #### 6.1.3 ABI结构
-```
+``go
 type ABI struct {
     Functions []Function
     Events    []Event
@@ -559,7 +523,7 @@ type ABI struct {
 ```
 
 #### 6.1.4 函数定义
-```
+``go
 type Function struct {
     Name       string
     Inputs     []Parameter
@@ -569,7 +533,7 @@ type Function struct {
 ```
 
 #### 6.1.5 资源限制
-```
+``go
 type ResourceLimit struct {
     MaxMemory    uint64 // 最大内存使用量 (bytes)
     MaxCPU       uint64 // 最大CPU时间 (milliseconds)
@@ -579,7 +543,7 @@ type ResourceLimit struct {
 ```
 
 #### 6.1.6 资源使用情况
-```
+``go
 type ResourceUsage struct {
     MemoryUsage  uint64
     CPUUsage     uint64
@@ -594,15 +558,19 @@ type ResourceUsage struct {
 虚拟机对外提供以下接口供其他系统调用：
 
 #### 7.1.1 合约管理接口
+``go
 - Compile(sourceCode string) (CompiledContract, error)
 - Deploy(contract CompiledContract) (ContractAddress, error)
 - Execute(address ContractAddress, function string, args ...interface{}) ([]byte, error)
 - Call(contract Address, function string, args ...any) ([]byte, error)
+```
 
 #### 7.1.2 查询接口
+``go
 - GetContractABI(address ContractAddress) (ABI, error)
 - GetContractStatus(address ContractAddress) (ContractStatus, error)
 - GetVersion() string
+```
 
 ## 8. 安全设计
 
@@ -682,15 +650,14 @@ type ResourceUsage struct {
 
 ### 13.1 分阶段实施
 1. **第一阶段**：重构核心引擎，明确各模块接口
-2. **第二阶段**：实现模块解耦，引入依赖注入
+2. **第二阶段**：实现模块解耦，引入依赖管理
 3. **第三阶段**：完善配置管理和插件机制
 4. **第四阶段**：增强测试支持和监控能力
 
 ### 13.2 技术选型建议
-1. 使用依赖注入框架（如 Wire）管理模块依赖
-2. 采用配置文件（如 YAML）管理模块配置
-3. 实现统一的日志和监控接口
-4. 建立完善的单元测试和集成测试体系
+1. 使用配置文件（如 YAML）管理模块配置
+2. 实现统一的日志和监控接口
+3. 建立完善的单元测试和集成测试体系
 
 ### 13.3 质量保障措施
 1. 建立代码审查机制，确保接口设计符合规范
@@ -707,17 +674,17 @@ type ResourceUsage struct {
 - VM: Virtual Machine，虚拟机
 
 ### 14.2 详细设计文档列表
-1. [虚拟机执行引擎详细设计](updated_vm_engine_detailed_design.md)
-2. [安全审查系统详细设计](updated_security_review_detailed_design.md)
-3. [编译器模块详细设计](updated_compiler_detailed_design.md)
-4. [执行环境模块详细设计](updated_execution_environment_detailed_design.md)
-5. [Gas计费系统详细设计](updated_gas_metering_detailed_design.md)
-6. [ABI生成器详细设计](updated_abi_generator_detailed_design.md)
-7. [存储管理模块详细设计](updated_storage_manager_detailed_design.md)
-8. [合约管理模块详细设计](updated_contract_manager_detailed_design.md)
+1. [虚拟机执行引擎详细设计](vm_engine_detailed_design.md)
+2. [安全审查系统详细设计](security_review_detailed_design.md)
+3. [编译器模块详细设计](compiler_detailed_design.md)
+4. [执行环境模块详细设计](execution_environment_detailed_design.md)
+5. [Gas计费系统详细设计](gas_metering_detailed_design.md)
+6. [ABI生成器详细设计](abi_generator_detailed_design.md)
+7. [存储管理模块详细设计](storage_manager_detailed_design.md)
+8. [合约管理模块详细设计](contract_manager_detailed_design.md)
 
 ### 14.3 参考文献
-- [架构设计文档](../architecture.md)
+- [架构设计文档](../modular_architecture_design.md)
 - [安全审查规范](../security_review.md)
 - [默认库接口规范](../default_library.md)
 - [执行环境设计](../execution_environment.md)

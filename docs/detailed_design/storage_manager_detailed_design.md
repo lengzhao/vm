@@ -20,6 +20,8 @@
 - 存储路径管理
 - 存储访问控制
 
+对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
+
 ### 2.2 架构图
 ```mermaid
 graph TD
@@ -119,8 +121,10 @@ graph TD
 A[输入编译合约] --> B[生成合约地址]
 B --> C[创建存储目录]
 C --> D[存储可执行文件]
-D --> E[存储元数据]
-E --> F[返回合约地址]
+D --> E[存储源代码]
+E --> F[存储ABI文件]
+F --> G[存储元数据]
+G --> H[返回合约地址]
 ```
 
 #### 3.3.2 合约加载流程
@@ -129,8 +133,10 @@ graph TD
 A[输入合约地址] --> B[验证地址有效性]
 B --> C[构建存储路径]
 C --> D[加载可执行文件]
-D --> E[加载元数据]
-E --> F[返回编译合约]
+D --> E[加载源代码]
+E --> F[加载ABI文件]
+F --> G[加载元数据]
+G --> H[返回编译合约]
 ```
 
 #### 3.3.3 ABI存储流程
@@ -180,6 +186,8 @@ type FileStorageAdapter interface {
 #### 4.2.1 功能描述
 负责智能合约对象的存储管理。
 
+对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
+
 #### 4.2.2 接口设计
 ```go
 type ObjectStorageManager interface {
@@ -208,6 +216,8 @@ type ObjectStorageManager interface {
 2. 提供对象版本控制
 3. 实现对象访问权限控制
 4. 支持对象查询和索引
+5. 支持外部对象存储系统的插件化集成
+6. 默认使用go-leveldb作为对象存储实现
 
 ## 5. 存储结构设计
 
@@ -216,7 +226,8 @@ type ObjectStorageManager interface {
 storage/
 ├── contracts/
 │   ├── {contract_address_1}/
-│   │   ├── executable    # 可执行文件
+│   │   ├── executable    # 可执行文件（可以被调用的合约程序）
+│   │   ├── source.go     # 源代码（可以被import的合约模块）
 │   │   ├── metadata.json # 元数据
 │   │   └── abi.json      # ABI文件
 │   ├── {contract_address_2}/
@@ -229,6 +240,10 @@ storage/
     ├── contracts.idx
     └── objects.idx
 ```
+
+合约部署成功后，会生成两个部分：
+1. **可以被import的合约模块**：包含合约的源代码文件（source.go），供其他合约通过import语句引用和复用合约功能
+2. **可以被调用的合约程序**：包含编译后的可执行二进制文件（executable），供外部系统通过虚拟机引擎调用执行
 
 ### 5.2 存储路径管理
 ```go
@@ -373,6 +388,12 @@ storage:
     enable_versioning: true
     enable_backup: true
     backup_interval: "24h"
+    # 外部对象存储系统配置（可选）
+    # external_provider: "s3"
+    # external_config:
+    #   endpoint: "https://s3.amazonaws.com"
+    #   access_key: "your-access-key"
+    #   secret_key: "your-secret-key"
 ```
 
 ### 10.2 监控指标
@@ -451,6 +472,12 @@ type ObjectStorageConfig struct {
     
     // 备份间隔
     BackupInterval time.Duration
+    
+    // 外部对象存储提供者（可选）
+    ExternalProvider string
+    
+    // 外部对象存储配置
+    ExternalConfig map[string]string
 }
 ```
 

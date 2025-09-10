@@ -24,9 +24,7 @@
 ```mermaid
 graph TD
 A[合约管理模块] --> B[合约部署器]
-A --> C[合约加载器]
-B --> D[部署验证器]
-C --> E[加载缓存器]
+B --> C[部署验证器]
 ```
 
 ## 3. 详细设计
@@ -38,7 +36,6 @@ C --> E[加载缓存器]
 type ContractManager struct {
     config ContractConfig
     deployer *ContractDeployer
-    loader *ContractLoader
     storage StorageManager
 }
 ```
@@ -48,12 +45,6 @@ type ContractManager struct {
 type ContractConfig struct {
     // 最大合约数量
     MaxContracts uint64
-    
-    // 是否启用合约缓存
-    EnableContractCache bool
-    
-    // 合约缓存大小
-    ContractCacheSize int
     
     // 部署验证配置
     DeploymentValidation DeploymentValidationConfig
@@ -119,15 +110,11 @@ F --> G[更新状态]
 G --> H[返回合约地址]
 ```
 
-#### 3.3.2 合约加载流程
+#### 3.3.2 合约获取流程
 ```mermaid
 graph TD
-A[输入合约地址] --> B[检查缓存]
-B --> C{缓存命中?}
-C --> |是| D[返回缓存合约]
-C --> |否| E[从存储加载]
-E --> F[缓存合约]
-F --> G[返回合约]
+A[输入合约地址] --> B[从存储获取]
+B --> C[返回合约]
 ```
 
 #### 3.3.3 合约卸载流程
@@ -171,33 +158,9 @@ type ContractDeployer interface {
 3. 将合约存储到存储管理模块
 4. 更新合约状态为已部署
 
-### 4.2 合约加载器模块
-
-#### 4.2.1 功能描述
-负责智能合约的加载过程，包括缓存管理和存储访问。
-
-#### 4.2.2 接口设计
-```go
-type ContractLoader interface {
-    // Load 加载合约
-    Load(address ContractAddress) (CompiledContract, error)
-    
-    // CacheContract 缓存合约
-    CacheContract(address ContractAddress, contract CompiledContract)
-    
-    // GetFromCache 从缓存获取合约
-    GetFromCache(address ContractAddress) (CompiledContract, bool)
-    
-    // ClearCache 清理缓存
-    ClearCache()
-}
-```
-
-#### 4.2.3 实现细节
-1. 实现LRU缓存机制
-2. 从存储管理模块加载合约
-3. 提供缓存命中统计
-4. 支持缓存大小控制
+合约部署成功后，会生成两个部分：
+1. **可以被import的合约模块**：包含合约的源代码和ABI信息，供其他合约通过import语句引用和复用合约功能
+2. **可以被调用的合约程序**：包含编译后的可执行二进制文件，供外部系统通过虚拟机引擎调用执行
 
 ## 5. 合约状态管理
 
@@ -299,53 +262,21 @@ type DeploymentValidator interface {
 - 升级回滚机制
 - 数据一致性保证
 
-## 8. 性能优化
+## 8. 错误处理
 
-### 8.1 合约缓存
-```go
-type ContractCache struct {
-    cache map[ContractAddress]CachedContract
-    lru   *lru.Cache
-    mutex sync.RWMutex
-}
-
-type CachedContract struct {
-    Contract CompiledContract
-    LoadedAt time.Time
-    Hits     uint64
-}
-```
-
-### 8.2 批量操作
-- 支持批量部署
-- 支持批量查询
-- 支持批量状态更新
-
-### 8.3 异步处理
-- 异步合约部署
-- 异步状态更新
-- 异步数据迁移
-
-## 9. 错误处理
-
-### 9.1 错误分类
+### 8.1 错误分类
 - 部署错误
-- 加载错误
 - 状态错误
 - 权限错误
 - 系统错误
 
-### 9.2 错误码设计
+### 8.2 错误码设计
 ```go
 const (
     // 部署相关错误
     ErrDeploymentFailed = 1001
     ErrInvalidContract = 1002
     ErrContractAlreadyExists = 1003
-    
-    // 加载相关错误
-    ErrContractNotFound = 2001
-    ErrContractLoadFailed = 2002
     
     // 状态相关错误
     ErrInvalidStatusTransition = 3001
@@ -365,7 +296,7 @@ const (
 )
 ```
 
-### 9.3 错误信息结构
+### 8.3 错误信息结构
 ```go
 type ContractError struct {
     Code     int
@@ -377,55 +308,49 @@ type ContractError struct {
 }
 ```
 
-## 10. 测试设计
+## 9. 测试设计
 
-### 10.1 单元测试
+### 9.1 单元测试
 为每个合约管理模块编写单元测试，确保功能正确性。
 
-### 10.2 集成测试
+### 9.2 集成测试
 编写集成测试，验证整个合约管理流程的正确性。
 
-### 10.3 性能测试
+### 9.3 性能测试
 编写性能测试，验证合约管理的性能指标。
 
-### 10.4 安全测试
+### 9.4 安全测试
 编写安全测试，验证合约管理的安全性。
 
-## 11. 部署与运维
+## 10. 部署与运维
 
-### 11.1 配置管理
+### 10.1 配置管理
 ```yaml
 contract:
   max_contracts: 1000000
-  enable_contract_cache: true
-  contract_cache_size: 10000
   deployment_validation:
     enable_signature_check: true
     enable_gas_limit_check: true
     max_contract_size: 1048576 # 1MB
 ```
 
-### 11.2 监控指标
+### 10.2 监控指标
 - 合约部署成功率
-- 合约加载平均时间
-- 缓存命中率
 - 合约状态分布
 - 升级成功率
 
-### 11.3 性能调优
+### 10.3 性能调优
 ```go
 type ContractManagerStats struct {
     TotalDeployed uint64
     TotalLoaded   uint64
-    CacheHits     uint64
-    AverageLoadTime time.Duration
     ErrorCount    uint64
 }
 ```
 
-## 12. 与其他模块的交互
+## 11. 与其他模块的交互
 
-### 12.1 与虚拟机引擎的交互
+### 11.1 与虚拟机引擎的交互
 ```go
 // VMEngineConfig 虚拟机引擎配置
 type VMEngineConfig struct {
@@ -435,10 +360,10 @@ type VMEngineConfig struct {
 }
 ```
 
-### 12.2 与存储管理模块的交互
+### 11.2 与存储管理模块的交互
 合约管理模块需要与存储管理模块协作，实现合约的持久化存储。
 
-### 12.3 数据传输对象
+### 11.3 数据传输对象
 ```go
 // 合约部署请求
 type DeployContractRequest struct {
@@ -455,9 +380,9 @@ type DeployContractResponse struct {
 }
 ```
 
-## 13. 附录
+## 12. 附录
 
-### 13.1 合约信息结构
+### 12.1 合约信息结构
 ```go
 type ContractInfo struct {
     // 合约地址
@@ -486,7 +411,7 @@ type ContractInfo struct {
 }
 ```
 
-### 13.2 部署验证配置
+### 12.2 部署验证配置
 ```go
 type DeploymentValidationConfig struct {
     // 是否启用签名检查
@@ -503,13 +428,11 @@ type DeploymentValidationConfig struct {
 }
 ```
 
-### 13.3 接口依赖关系
+### 12.3 接口依赖关系
 ```mermaid
 graph TD
 A[VMEngine] --> B[ContractManager]
 B --> C[ContractDeployer]
-B --> D[ContractLoader]
-B --> E[StorageManager]
-C --> F[部署验证器]
-D --> G[加载缓存器]
+B --> D[StorageManager]
+C --> E[部署验证器]
 ```

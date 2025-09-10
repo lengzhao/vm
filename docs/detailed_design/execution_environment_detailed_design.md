@@ -15,18 +15,17 @@
 
 ### 2.1 功能概述
 执行环境模块提供合约执行环境，包括：
-- 沙箱执行环境
-- 资源控制
+- 简化的执行接口
+- 基础资源控制
 - 执行监控
-- 环境隔离
+
+根据当前需求，执行器暂时不需要复杂实现，只需要有对应的接口，用cmd调用合约就行。
 
 ### 2.2 架构图
 ```mermaid
 graph TD
-A[执行环境模块] --> B[沙箱执行器]
-A --> C[资源控制器]
-B --> D[进程管理器]
-C --> E[资源监控器]
+A[执行环境模块] --> B[命令行执行器]
+A --> C[基础资源控制器]
 ```
 
 ## 3. 详细设计
@@ -37,7 +36,7 @@ C --> E[资源监控器]
 ```go
 type ExecutionEnvironment struct {
     config ExecutionConfig
-    sandboxExecutor *SandboxExecutor
+    cmdExecutor *CmdExecutor
     resourceController *ResourceController
 }
 ```
@@ -50,9 +49,6 @@ type ExecutionConfig struct {
     
     // 执行超时
     ExecutionTimeout time.Duration
-    
-    // 是否启用沙箱
-    EnableSandbox bool
     
     // 工作目录
     WorkingDir string
@@ -88,7 +84,7 @@ type ExecutionResult struct {
 ### 3.2 核心接口设计
 
 #### 3.2.1 ExecutionEnvironment 接口
-``go
+```go
 // ExecutionEnvironment 执行环境模块接口（与架构文档保持一致）
 type ExecutionEnvironment interface {
     // Run 在执行环境中运行合约
@@ -112,60 +108,42 @@ type ExecutionEnvironment interface {
 graph TD
 A[输入执行参数] --> B[环境准备]
 B --> C[资源限制设置]
-C --> D[沙箱环境启动]
-D --> E[执行合约]
-E --> F[结果收集]
-F --> G[资源回收]
-G --> H[返回执行结果]
-```
-
-#### 3.3.2 资源监控流程
-```mermaid
-graph TD
-A[开始执行] --> B[启动资源监控]
-B --> C[定期检查资源使用]
-C --> D{超出限制?}
-D --> |是| E[终止执行]
-D --> |否| F[继续监控]
-F --> G{执行完成?}
-G --> |是| H[停止监控]
-G --> |否| C
+C --> D[命令行执行合约]
+D --> E[结果收集]
+E --> F[资源回收]
+F --> G[返回执行结果]
 ```
 
 ## 4. 模块设计
 
-### 4.1 沙箱执行器模块
+### 4.1 命令行执行器模块
 
 #### 4.1.1 功能描述
-负责在沙箱环境中执行合约代码。
+负责通过命令行调用执行合约代码，替代复杂的沙箱实现。
 
 #### 4.1.2 接口设计
 ```go
-type SandboxExecutor interface {
-    // Execute 在沙箱中执行
+type CmdExecutor interface {
+    // Execute 通过命令行执行
     Execute(executablePath string, args ...string) ([]byte, error)
     
-    // SetSandboxConfig 设置沙箱配置
-    SetSandboxConfig(config SandboxConfig)
+    // SetExecutionConfig 设置执行配置
+    SetExecutionConfig(config ExecutionConfig)
     
-    // IsSandboxEnabled 检查沙箱是否启用
-    IsSandboxEnabled() bool
-    
-    // GetSandboxInfo 获取沙箱信息
-    GetSandboxInfo() *SandboxInfo
+    // GetExecutionInfo 获取执行信息
+    GetExecutionInfo() *ExecutionInfo
 }
 ```
 
 #### 4.1.3 实现细节
-1. 使用操作系统级隔离机制
-2. 限制文件系统访问
-3. 限制网络访问
-4. 限制系统调用
+1. 使用操作系统命令行接口执行合约
+2. 通过进程管理执行合约程序
+3. 收集执行结果和基本资源使用情况
 
 ### 4.2 资源控制器模块
 
 #### 4.2.1 功能描述
-负责监控和控制合约执行过程中的资源使用。
+负责基础的资源监控和控制合约执行过程中的资源使用。
 
 #### 4.2.2 接口设计
 ```go
@@ -188,56 +166,30 @@ type ResourceController interface {
 ```
 
 #### 4.2.3 实现细节
-1. 使用cgroups (Linux) 或类似机制限制资源
-2. 定期采样资源使用情况
+1. 基础的资源限制（内存、CPU时间等）
+2. 进程级别的资源监控
 3. 超出限制时终止执行
 
-## 5. 环境隔离
+## 5. 简化实现说明
 
-### 5.1 文件系统隔离
-```go
-type FileSystemIsolator interface {
-    // Mount 挂载隔离文件系统
-    Mount() error
-    
-    // Unmount 卸载隔离文件系统
-    Unmount() error
-    
-    // GetRoot 获取根目录
-    GetRoot() string
-}
-```
+根据当前需求，执行环境模块采用简化的实现方式：
 
-### 5.2 网络访问控制
-```go
-type NetworkController interface {
-    // SetPolicy 设置网络策略
-    SetPolicy(policy NetworkPolicy)
-    
-    // CheckAccess 检查网络访问权限
-    CheckAccess(host string, port int) error
-}
-```
+### 5.1 简化原则
+1. 移除复杂的沙箱隔离机制
+2. 通过命令行直接调用编译后的合约程序
+3. 保留基础的资源监控和限制功能
+4. 提供与原有接口兼容的实现
 
-### 5.3 系统调用限制
-```go
-type SyscallFilter interface {
-    // FilterSyscall 过滤系统调用
-    FilterSyscall(syscallNum int, args ...uintptr) error
-    
-    // IsAllowed 检查系统调用是否被允许
-    IsAllowed(syscallNum int) bool
-}
-```
+### 5.2 实现方式
+1. 使用`os/exec`包执行编译后的合约程序
+2. 通过进程管理控制合约执行
+3. 基础的资源限制通过系统机制实现
+4. 执行结果通过标准输出获取
 
 ## 6. 安全设计
 
-### 6.1 多层隔离
-通过多层隔离机制确保合约安全执行：
-1. 进程级隔离
-2. 文件系统隔离
-3. 网络访问控制
-4. 系统调用过滤
+### 6.1 基础隔离
+通过基础的进程隔离确保合约执行的安全性。
 
 ### 6.2 资源限制
 严格限制合约可使用的系统资源，防止资源滥用。
@@ -248,22 +200,17 @@ type SyscallFilter interface {
 ## 7. 性能优化
 
 ### 7.1 轻量级实现
-使用轻量级技术实现沙箱环境，减少性能开销。
+使用轻量级技术实现执行环境，减少性能开销。
 
-### 7.2 资源复用
-支持沙箱环境的复用，减少创建和销毁开销。
-
-### 7.3 异步监控
-使用异步方式监控资源使用，减少对执行性能的影响。
+### 7.2 进程复用
+支持执行进程的复用，减少创建和销毁开销。
 
 ## 8. 错误处理
 
 ### 8.1 错误分类
 - 资源超限错误
 - 执行错误
-- 系统调用拒绝错误
 - 文件系统访问错误
-- 网络访问拒绝错误
 - 执行超时错误
 
 ### 8.2 错误码设计
@@ -273,24 +220,15 @@ const (
     ErrMemoryLimitExceeded = 1001
     ErrCPULimitExceeded = 1002
     ErrStorageLimitExceeded = 1003
-    ErrNetworkLimitExceeded = 1004
     
     // 执行相关错误
     ErrExecutionFailed = 2001
     ErrExecutionTimeout = 2002
     ErrExecutionPanic = 2003
     
-    // 系统调用相关错误
-    ErrSyscallNotAllowed = 3001
-    ErrSyscallFailed = 3002
-    
     // 文件系统相关错误
     ErrFileAccessDenied = 4001
     ErrFileSystemFull = 4002
-    
-    // 网络相关错误
-    ErrNetworkAccessDenied = 5001
-    ErrNetworkTimeout = 5002
     
     // 系统相关错误
     ErrSystemError = 6001
@@ -317,17 +255,13 @@ type ExecutionError struct {
 ### 9.2 集成测试
 编写集成测试，验证整个执行环境的功能。
 
-### 9.3 安全测试
-编写安全测试，验证执行环境的安全性。
-
-### 9.4 性能测试
+### 9.3 性能测试
 编写性能测试，验证执行环境的性能指标。
 
 ## 10. 部署与运维
 
 ### 10.1 系统要求
-- Linux 内核 3.10+
-- cgroups 支持
+- 支持命令行执行的操作系统
 - 足够的系统资源
 
 ### 10.2 配置管理
@@ -336,11 +270,8 @@ execution:
   resource_limit:
     memory_limit: 104857600 # 100MB
     cpu_time_limit: 5000 # 5秒
-    file_descriptor_limit: 100
-    network_bandwidth_limit: 1048576 # 1MB/sec
     storage_limit: 10485760 # 10MB
   execution_timeout: 30s
-  enable_sandbox: true
   working_dir: "./execution_env"
 ```
 
@@ -348,7 +279,6 @@ execution:
 - 资源使用率
 - 执行成功率
 - 平均执行时间
-- 安全违规事件
 
 ## 11. 与其他模块的交互
 
@@ -392,12 +322,6 @@ type ResourceLimit struct {
     // CPU时间限制 (milliseconds)
     CPUTimeLimit uint64
     
-    // 文件描述符限制
-    FileDescriptorLimit uint64
-    
-    // 网络带宽限制 (bytes/sec)
-    NetworkBandwidthLimit uint64
-    
     // 存储空间限制 (bytes)
     StorageLimit uint64
 }
@@ -408,8 +332,6 @@ type ResourceLimit struct {
 type ResourceUsage struct {
     MemoryUsage  uint64 // bytes
     CPUUsage     uint64 // milliseconds
-    FDUsage      uint64 // file descriptors
-    NetworkUsage uint64 // bytes
     StorageUsage uint64 // bytes
     StartTime    time.Time
     EndTime      time.Time
@@ -420,8 +342,6 @@ type ResourceUsage struct {
 ```mermaid
 graph TD
 A[VMEngine] --> B[ExecutionEnvironment]
-B --> C[SandboxExecutor]
+B --> C[CmdExecutor]
 B --> D[ResourceController]
-C --> E[进程管理器]
-D --> F[资源监控器]
 ```

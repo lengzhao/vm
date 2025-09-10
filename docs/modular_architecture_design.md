@@ -8,13 +8,12 @@
 ### 1.2 术语定义
 - **模块化架构**：将系统功能划分为独立模块，通过明确定义的接口进行交互的架构方式
 - **耦合度**：模块间相互依赖的程度
-- **依赖注入**：一种设计模式，用于实现控制反转，降低模块间的耦合度
 
 ## 2. 设计目标
 
 1. **降低模块耦合度**：通过清晰的接口定义和依赖管理，减少模块间的直接依赖
 2. **明确接口设计**：定义标准化的接口，提高系统的可维护性
-3. **简化依赖关系**：通过依赖注入和接口抽象，简化模块间的依赖关系
+3. **简化依赖关系**：通过接口抽象，简化模块间的依赖关系
 4. **增强扩展性**：设计易于扩展的架构，支持新功能的快速集成
 
 ## 3. 整体架构设计
@@ -44,7 +43,6 @@ graph LR
     F --> Q[资源控制器]
     
     G --> R[Gas计量器]
-    G --> S[Gas策略管理器]
     
     H --> T[AST解析器]
     H --> U[函数识别器]
@@ -54,7 +52,6 @@ graph LR
     I --> X[对象存储管理器]
     
     J --> Y[合约部署器]
-    J --> Z[合约加载器]
     
     subgraph "核心模块层"
         C
@@ -79,14 +76,12 @@ graph LR
         P
         Q
         R
-        S
         T
         U
         V
         W
         X
         Y
-        Z
     end
 ```
 
@@ -170,7 +165,9 @@ type ContractCompiler interface {
 
 ### 4.4 执行环境模块 (ExecutionEnvironment)
 
-提供合约执行环境，包括沙箱执行和资源控制。
+提供合约执行环境，包括基础的执行接口和资源控制。
+
+根据当前需求，执行器暂时不需要复杂实现，只需要有对应的接口，用cmd调用合约就行。
 
 ```go
 // ExecutionEnvironment 执行环境模块接口
@@ -252,9 +249,15 @@ type StorageManager interface {
 }
 ```
 
+对象存储系统可以由外部提供，如果外部没有提供，默认使用go-leveldb。
+
 ### 4.8 合约管理模块 (ContractManager)
 
 负责合约的生命周期管理。
+
+合约部署成功后，会生成两个部分：
+1. **可以被import的合约模块**：包含合约的源代码，供其他合约通过import语句引用和复用合约功能
+2. **可以被调用的合约程序**：包含编译后的可执行二进制文件，供外部系统通过虚拟机引擎调用执行
 
 ```go
 // ContractManager 合约管理模块接口
@@ -278,33 +281,32 @@ type ContractManager interface {
 
 ## 5. 模块间接口设计
 
-### 5.1 依赖关系管理
+### 5.1 模块间通信
 
-通过依赖注入的方式管理模块间的依赖关系，降低耦合度：
+模块间通过明确定义的接口进行通信，降低耦合度：
 
 ```go
-// VMEngineConfig 虚拟机引擎配置
-type VMEngineConfig struct {
-    SecurityReviewer   SecurityReviewer
-    ContractCompiler   ContractCompiler
-    ExecutionEnv       ExecutionEnvironment
-    GasMetering        GasMetering
-    ABIGenerator       ABIGenerator
-    StorageManager     StorageManager
-    ContractManager    ContractManager
-    // 其他配置项
+// VMEngine 虚拟机核心引擎实现
+type vmEngineImpl struct {
+    securityReviewer SecurityReviewer
+    compiler         ContractCompiler
+    executionEnv     ExecutionEnvironment
+    gasMetering      GasMetering
+    abiGenerator     ABIGenerator
+    storageManager   StorageManager
+    contractManager  ContractManager
 }
 
 // NewVMEngine 创建新的虚拟机引擎实例
-func NewVMEngine(config VMEngineConfig) VMEngine {
+func NewVMEngine() VMEngine {
     return &vmEngineImpl{
-        securityReviewer: config.SecurityReviewer,
-        compiler:         config.ContractCompiler,
-        executionEnv:     config.ExecutionEnv,
-        gasMetering:      config.GasMetering,
-        abiGenerator:     config.ABIGenerator,
-        storageManager:   config.StorageManager,
-        contractManager:  config.ContractManager,
+        securityReviewer: NewSecurityReviewer(),
+        compiler:         NewContractCompiler(),
+        executionEnv:     NewExecutionEnvironment(),
+        gasMetering:      NewGasMetering(),
+        abiGenerator:     NewABIGenerator(),
+        storageManager:   NewStorageManager(),
+        contractManager:  NewContractManager(),
     }
 }
 ```
@@ -313,7 +315,7 @@ func NewVMEngine(config VMEngineConfig) VMEngine {
 
 定义清晰的数据传输对象，确保模块间数据传递的一致性：
 
-```go
+``go
 // CompiledContract 编译后的合约
 type CompiledContract struct {
     // 合约可执行文件路径
@@ -398,80 +400,7 @@ type Config interface {
     
     // LoadFromFile 从文件加载配置
     LoadFromFile(path string) error
-    
-    // SaveToFile 保存配置到文件
-    SaveToFile(path string) error
-}
-
-// ConfigManager 配置管理器
-type ConfigManager struct {
-    configs map[string]Config
-}
-
-// GetConfig 获取配置
-func (cm *ConfigManager) GetConfig(module string) Config {
-    return cm.configs[module]
-}
+```
 ```
 
-## 7. 测试支持设计
-
-### 7.1 模块化测试
-
-每个模块提供专门的测试接口，支持独立测试：
-
-```go
-// Testable 可测试接口
-type Testable interface {
-    // SetupTest 测试设置
-    SetupTest() error
-    
-    // TeardownTest 测试清理
-    TeardownTest() error
-    
-    // RunTest 运行测试
-    RunTest(testName string, testData interface{}) (interface{}, error)
-}
-
-// ModuleTester 模块测试器
-type ModuleTester struct {
-    module Testable
-}
-
-// RunModuleTest 运行模块测试
-func (mt *ModuleTester) RunModuleTest(testName string, testData interface{}) (interface{}, error) {
-    if err := mt.module.SetupTest(); err != nil {
-        return nil, err
-    }
-    defer mt.module.TeardownTest()
-    
-    return mt.module.RunTest(testName, testData)
-}
 ```
-
-## 8. 实施建议
-
-### 8.1 分阶段实施
-
-1. **第一阶段**：重构核心引擎，明确各模块接口
-2. **第二阶段**：实现模块解耦，引入依赖注入
-3. **第三阶段**：完善配置管理
-4. **第四阶段**：增强测试支持和监控能力
-
-### 8.2 技术选型建议
-
-1. 使用依赖注入框架（如 Wire）管理模块依赖
-2. 采用配置文件（如 YAML）管理模块配置
-3. 实现统一的日志和监控接口
-4. 建立完善的单元测试和集成测试体系
-
-### 8.3 质量保障措施
-
-1. 建立代码审查机制，确保接口设计符合规范
-2. 实施持续集成，自动化测试和部署
-3. 建立性能基准测试，监控系统性能变化
-4. 定期进行架构评审，持续优化系统设计
-
-## 9. 结论
-
-通过上述模块化架构设计，可以有效解决当前架构中模块间耦合度高、接口设计不清晰、依赖关系复杂以及扩展性不足的问题。该设计通过明确的模块划分、标准化的接口定义、灵活的依赖管理和良好的扩展性支持，为系统的长期发展奠定了坚实的基础。

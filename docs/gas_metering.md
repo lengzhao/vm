@@ -18,7 +18,7 @@ Gas计费系统通过以下方式实现资源控制：
 
 ### 2.2 接口操作计费
 
-所有的包函数调用都有固定的gas消耗：
+所有的包函数调用都有固定的gas消耗，具体数值在接口模块中定义：
 
 - 基础操作（如查询区块信息）消耗较少gas
 - 存储操作（如创建对象、修改字段）消耗较多gas
@@ -41,24 +41,33 @@ Gas计费系统通过以下方式实现资源控制：
 
 | 接口函数 | Gas消耗 |
 |---------|--------|
-| BlockHeight() | 10 |
-| BlockTime() | 10 |
-| ContractAddress() | 10 |
-| Sender() | 10 |
-| Transfer() | 100 |
-| Log() | 20 |
+| BlockHeight() | 1 |
+| BlockTime() | 1 |
+| ContractAddress() | 1 |
+| Sender() | 1 |
+| Balance() | 5 |
+| Transfer() | 20 |
+| Log() | 2 |
+| CreateObject() | 50 |
+| GetObject() | 10 |
+| GetObjectWithOwner() | 15 |
+| DeleteObject() | 10 |
+| Object.Get() | 5 |
+| Object.Set() | 10 |
+| Object.SetOwner() | 10 |
+| Call() | 30 |
 
 ### 3.3 对象存储接口Gas消耗
 
 | 接口函数 | Gas消耗 |
 |---------|--------|
-| CreateObject() | 150 |
+| CreateObject() | 50 |
 | GetObject() | 10 |
 | GetObjectWithOwner() | 15 |
 | DeleteObject() | 10 |
-| Object.Get() | 15 |
-| Object.Set() | 30*length |
-| Object.SetOwner() | 20 |
+| Object.Get() | 5 |
+| Object.Set() | 10 |
+| Object.SetOwner() | 10 |
 
 ### 3.4 跨合约调用Gas消耗
 
@@ -122,3 +131,17 @@ func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
 // 插入示例
 gasMeter.ConsumeGas(1, "code line execution")
 ```
+
+## 6. 模块职责划分
+
+### 6.1 Gas计费模块
+Gas计费模块([gas_metering_detailed_design.md](./detailed_design/gas_metering_detailed_design.md))负责基础的Gas计量功能：
+- 设置Gas限制
+- 跟踪Gas消耗
+- 超限时处理（panic）
+
+### 6.2 接口模块
+接口模块负责具体的Gas消耗数值计算：
+- 根据操作类型确定Gas消耗量
+- 在接口函数调用时消耗相应Gas
+- 提供Gas估算功能
