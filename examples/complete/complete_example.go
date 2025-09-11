@@ -1,5 +1,5 @@
 // Package main 完整示例展示所有已实现的功能
-package vm
+package main
 
 import (
 	"fmt"

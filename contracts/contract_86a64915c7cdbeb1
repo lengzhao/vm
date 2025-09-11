@@ -1,3 +1,0 @@
-#!/bin/sh
-echo 'Executing contract: /var/folders/zx/wxzy7_6x4qq8h_r7c5fhygvh0000gn/T/contract_86a64915c7cdbeb1.go'
-echo 'Source hash: 86a64915c7cdbeb1'

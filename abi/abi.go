@@ -118,54 +118,78 @@ func extractEventsFromFunction(funcDecl *ast.FuncDecl) []Event {
 			return true
 		}
 
-		// Check if this is a ctx.Log call
-		selExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
+		// Check if this is a ctx.Log call or similar event emission
+		// 支持多种事件发射方式
+		eventName := ""
+		args := callExpr.Args
+
+		// 检查函数调用
+		switch fun := callExpr.Fun.(type) {
+		case *ast.SelectorExpr:
+			// 检查是否是 ctx.Log 或类似的调用
+			if fun.Sel.Name == "Log" || fun.Sel.Name == "Emit" || fun.Sel.Name == "Event" ||
+				fun.Sel.Name == "emit" || fun.Sel.Name == "log" || fun.Sel.Name == "event" {
+				// 第一个参数作为事件名称
+				if len(args) > 0 {
+					if basicLit, ok := args[0].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
+						eventName = strings.Trim(basicLit.Value, "\"")
+						args = args[1:] // 移除事件名称参数
+					} else if ident, ok := args[0].(*ast.Ident); ok {
+						// 如果第一个参数是标识符，将其作为事件名称
+						eventName = ident.Name
+						args = args[1:] // 移除事件名称参数
+					}
+				}
+			}
+		case *ast.Ident:
+			// 检查是否是直接的事件发射函数
+			if fun.Name == "emit" || fun.Name == "log" || fun.Name == "event" ||
+				fun.Name == "Emit" || fun.Name == "Log" || fun.Name == "Event" {
+				// 第一个参数作为事件名称
+				if len(args) > 0 {
+					if basicLit, ok := args[0].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
+						eventName = strings.Trim(basicLit.Value, "\"")
+						args = args[1:] // 移除事件名称参数
+					} else if ident, ok := args[0].(*ast.Ident); ok {
+						// 如果第一个参数是标识符，将其作为事件名称
+						eventName = ident.Name
+						args = args[1:] // 移除事件名称参数
+					}
+				}
+			}
 		}
 
-		// Check if it's a Log call on ctx
-		if selExpr.Sel.Name != "Log" {
-			return true
-		}
-
-		// Extract event name and parameters
-		if len(callExpr.Args) < 1 {
-			return true
-		}
-
-		// First argument should be the event name
-		eventName, ok := callExpr.Args[0].(*ast.BasicLit)
-		if !ok || eventName.Kind != token.STRING {
-			return true
-		}
-
-		// Remove quotes from event name
-		name := strings.Trim(eventName.Value, "\"")
-
-		// Create event with parameters
-		event := Event{
-			Name:       name,
-			Parameters: make([]Parameter, 0),
-		}
-
-		// Extract parameters (key-value pairs)
-		for i := 1; i < len(callExpr.Args); i++ {
-			it := callExpr.Args[i]
-			var paramName string
-			// Get parameter name
-			key, ok := it.(*ast.BasicLit)
-			if ok {
-				paramName = strings.Trim(key.Value, "\"")
+		// 如果找到了事件名称，创建事件对象
+		if eventName != "" {
+			event := Event{
+				Name:       eventName,
+				Parameters: make([]Parameter, 0),
 			}
 
-			event.Parameters = append(event.Parameters, Parameter{
-				Name: paramName,
-				Type: getTypeString(it),
-			})
-		}
+			// 提取参数
+			for i := 0; i < len(args); i += 2 {
+				if i+1 < len(args) {
+					// 键值对参数
+					if key, ok := args[i].(*ast.BasicLit); ok && key.Kind == token.STRING {
+						paramName := strings.Trim(key.Value, "\"")
+						paramType := getTypeString(args[i+1])
+						event.Parameters = append(event.Parameters, Parameter{
+							Name: paramName,
+							Type: paramType,
+						})
+					}
+				} else {
+					// 单个参数
+					paramType := getTypeString(args[i])
+					event.Parameters = append(event.Parameters, Parameter{
+						Name: fmt.Sprintf("param%d", i/2+1),
+						Type: paramType,
+					})
+				}
+			}
 
-		events = append(events, event)
+			events = append(events, event)
+		}
 
 		return true
 	})
@@ -322,7 +346,11 @@ func (abi *ABI) String() string {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
-			sb.WriteString(fmt.Sprintf("%s %s", param.Name, param.Type))
+			if param.Name != "" {
+				sb.WriteString(fmt.Sprintf("%s %s", param.Name, param.Type))
+			} else {
+				sb.WriteString(param.Type)
+			}
 		}
 		sb.WriteString(")\n")
 	}
