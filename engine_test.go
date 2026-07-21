@@ -404,6 +404,151 @@ func Add(a, b int) int { return a + b }
 	}
 }
 
+func TestExecuteGasLimitExceeded(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          25,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     time.Second * 10,
+		ContractStorageDir:   dir,
+	})
+
+	source := `
+package main
+
+func Loop() int {
+	sum := 0
+	for i := 0; i < 1000; i++ {
+		sum = sum + i
+	}
+	return sum
+}
+`
+	compiled, err := engine.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	address, err := engine.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	_, err = engine.Execute(address, "Loop")
+	if err == nil {
+		t.Fatal("expected gas limit exceeded")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "gas") {
+		t.Fatalf("expected gas error, got %v", err)
+	}
+}
+
+func TestExecuteTimeout(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          1000000,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     200 * time.Millisecond,
+		ContractStorageDir:   dir,
+	})
+
+	source := `
+package main
+
+import "time"
+
+func Hang() {
+	time.Sleep(5 * time.Second)
+}
+`
+	compiled, err := engine.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	address, err := engine.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	_, err = engine.Execute(address, "Hang")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+}
+
+func TestExecuteUnknownFunctionAndBadArgs(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          1000000,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     time.Second * 10,
+		ContractStorageDir:   dir,
+	})
+
+	source := `
+package main
+
+func Add(a, b int) int {
+	return a + b
+}
+`
+	compiled, err := engine.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	address, err := engine.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	_, err = engine.Execute(address, "NoSuch")
+	if err == nil || !strings.Contains(err.Error(), "unknown function") {
+		t.Fatalf("expected unknown function error, got %v", err)
+	}
+
+	_, err = engine.Execute(address, "Add", "not-int", 2)
+	if err == nil {
+		t.Fatal("expected invalid arg error")
+	}
+}
+
+func TestExecuteMultipleReturnValues(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          1000000,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     time.Second * 10,
+		ContractStorageDir:   dir,
+	})
+
+	source := `
+package main
+
+func GetUserDetails(id int) (string, int, bool) {
+	return "User", id * 100, true
+}
+`
+	compiled, err := engine.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	address, err := engine.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	result, err := engine.Execute(address, "GetUserDetails", 7)
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !strings.Contains(string(result), "User") || !strings.Contains(string(result), "700") {
+		t.Fatalf("unexpected result: %s", string(result))
+	}
+}
+
 func abiPlaceholder() *abi.ABI {
 	return &abi.ABI{
 		PackageName: "test",

@@ -5,10 +5,13 @@
 ## 特性
 
 - **源码即合约**：智能合约本身就是Golang代码
-- **安全优先**：通过关键字白名单和导入白名单确保执行安全性
+- **安全优先**：通过关键字/导入白名单与 AST 审查确保执行安全性
 - **开发友好**：降低智能合约开发门槛，让熟悉Go语言的开发者无缝接入
-- **并行执行**：通过对象隔离机制支持交易的并行执行
-- **Gas计费**：防止合约执行消耗过多系统资源
+- **可执行流水线**：Compile → Deploy → Execute 已打通（ProcessRunner）
+- **Gas计费**：入口/函数/循环控制点计费（MVP）
+- **并行执行（设计方向）**：通过对象隔离支持交易并行，尚未实现
+
+> 注意：当前为 Alpha/MVP。ProcessRunner 仅有进程超时与 Gas 限制，**不应用于执行不可信合约**。见 [docs/sandbox_roadmap.md](docs/sandbox_roadmap.md)。
 
 ## 已实现功能
 
@@ -129,6 +132,8 @@ func Add(a, b int) int {
 ### 规范文档
 - [安全审查规范](docs/security_review.md)
 - [默认库接口规范](docs/default_library.md)
+- [Host Runtime 设计](docs/host_runtime.md)
+- [沙箱路线图](docs/sandbox_roadmap.md)
 - [执行环境设计](docs/execution_environment.md)
 - [Gas计费机制](docs/gas_metering.md)
 - [ABI生成与关键字处理](docs/abi_generation.md)

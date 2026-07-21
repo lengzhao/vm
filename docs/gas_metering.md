@@ -32,7 +32,15 @@
 
 ## 3. Gas消耗模型
 
-### 3.1 基础操作Gas消耗
+### 3.1 MVP 已实现
+
+| 操作类型 | Gas消耗 |
+|---------|--------|
+| 执行入口基础消耗 | 10 |
+| 函数入口 | 1 |
+| for / range 每次迭代 | 1 |
+
+### 3.2 目标态基础操作（后置精细化，非当前实现）
 
 | 操作类型 | Gas消耗 |
 |---------|--------|
@@ -42,7 +50,7 @@
 | 条件判断 | 1 |
 | 函数调用开销 | 5 |
 
-### 3.2 区块链接口Gas消耗
+### 3.3 区块链接口Gas消耗（Host Runtime 接入后生效）
 
 | 接口函数 | Gas消耗 |
 |---------|--------|
@@ -62,7 +70,7 @@
 | Object.SetOwner() | 10 |
 | Call() | 30 |
 
-### 3.3 对象存储接口Gas消耗
+### 3.4 对象存储接口Gas消耗（后置）
 
 | 接口函数 | Gas消耗 |
 |---------|--------|
@@ -74,7 +82,7 @@
 | Object.Set() | 10 |
 | Object.SetOwner() | 10 |
 
-### 3.4 跨合约调用Gas消耗
+### 3.5 跨合约调用Gas消耗（后置）
 
 | 操作 | Gas消耗 |
 |-----|--------|
@@ -150,3 +158,25 @@ Gas计费模块([gas_metering_detailed_design.md](./detailed_design/gas_metering
 - 根据操作类型确定Gas消耗量
 - 在接口函数调用时消耗相应Gas
 - 提供Gas估算功能
+
+## 7. EstimateGas 与基准测试（下一阶段）
+
+### 7.1 EstimateGas 初版思路
+
+```text
+EstimateGas ≈ 入口基础Gas(10)
+            + 静态函数入口数 * 1
+            + 静态循环控制点数 * 配置迭代上界
+            + 默认库调用表累加（Host 接入后）
+```
+
+初版只做保守上界，不做精确路径分析。
+
+### 7.2 基准测试方向
+
+1. 短函数：`Add`
+2. 固定迭代循环函数
+3. 多返回值函数
+4. （后续）含 `Log` / Object / Call 的合约
+
+详细设计见 [`detailed_design/gas_metering_detailed_design.md`](detailed_design/gas_metering_detailed_design.md)。
