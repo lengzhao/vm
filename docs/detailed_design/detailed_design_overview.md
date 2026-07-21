@@ -16,7 +16,22 @@
 
 ## 2. 系统架构详细设计
 
-### 2.1 总体架构图
+> **当前实现阶段**：以可执行合约流水线为准（见 `architecture.md` / `contract_processing_flow.md`）。
+> `VMEngine` 编排 `ContractCompiler` + `Runner` + `ContractManager`；复杂沙箱、Host Runtime、并行调度后置。
+
+### 2.1 总体架构图（当前）
+```mermaid
+flowchart LR
+    Client[集成方] --> Engine[VMEngine]
+    Engine --> Compiler[ContractCompiler]
+    Engine --> Runner[ProcessRunner]
+    Engine --> Store[ContractManager]
+    Engine --> Gas[GasMetering]
+    Engine --> Security[SecurityReviewer]
+    Engine --> ABIGen[ABIGenerator]
+```
+
+### 2.1b 历史目标架构图（后置能力参考）
 ```
 graph LR
     A[客户端/外部系统] --> B[API网关层]

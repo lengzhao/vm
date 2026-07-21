@@ -34,10 +34,16 @@
 
 合约只能导入以下指定的安全库：
 
+- `fmt`: 格式化输出（当前允许）
 - `strconv`: 字符串转换
 - `math`: 数学计算
+- `time`: 时间处理
 - `errors`: 错误处理
 - `github.com/lengzhao/vm`: 项目默认库，提供与区块链环境交互的接口
+
+禁止危险构造（AST 检查）：`unsafe`、`go`、`select`、`chan`、`goto`、`map`、`cap`。
+禁止包级可变全局变量；`const` 允许。
+合约源码不得包含 `main`（由编译器生成入口）。
 
 ## 5. 默认函数白名单
 

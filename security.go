@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -32,7 +33,6 @@ func NewSecurityReviewer() SecurityReviewer {
 		allowedImports:  make(map[string]bool),
 	}
 
-	// 初始化允许的关键字白名单
 	allowedKeywords := []string{
 		"int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64",
@@ -48,7 +48,6 @@ func NewSecurityReviewer() SecurityReviewer {
 		reviewer.allowedKeywords[keyword] = true
 	}
 
-	// 初始化允许的导入白名单
 	allowedImports := []string{
 		"fmt",
 		"strconv",
@@ -67,14 +66,12 @@ func NewSecurityReviewer() SecurityReviewer {
 
 // Review 对合约源代码进行安全审查
 func (s *SecurityReviewerImpl) Review(sourceCode string) error {
-	// 解析源代码为AST
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "", sourceCode, parser.AllErrors)
 	if err != nil {
 		return err
 	}
 
-	// 检查导入列表
 	for _, imp := range file.Imports {
 		importPath := strings.Trim(imp.Path.Value, "\"")
 		if !s.IsImportAllowed(importPath) {
@@ -86,26 +83,99 @@ func (s *SecurityReviewerImpl) Review(sourceCode string) error {
 		}
 	}
 
-	// 检查关键字使用
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			valueSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			names := make([]string, 0, len(valueSpec.Names))
+			for _, name := range valueSpec.Names {
+				names = append(names, name.Name)
+			}
+			return &SecurityError{
+				Message:   fmt.Sprintf("不允许包级可变全局变量: %s", strings.Join(names, ", ")),
+				ErrorType: GlobalVarNotAllowed,
+				Keyword:   "var",
+			}
+		}
+	}
+
+	var reviewErr error
 	ast.Inspect(file, func(n ast.Node) bool {
+		if reviewErr != nil {
+			return false
+		}
+
 		switch x := n.(type) {
-		case *ast.Ident:
-			if !s.IsKeywordAllowed(x.Name) {
-				// 检查是否是函数名或变量名而不是关键字
-				// 这里简化处理，实际需要更复杂的逻辑来区分
-				// 暂时跳过函数名和变量名的检查
+		case *ast.GoStmt:
+			reviewErr = &SecurityError{
+				Message:   "不允许的关键字: go",
+				ErrorType: KeywordNotAllowed,
+				Keyword:   "go",
+			}
+			return false
+		case *ast.SelectStmt:
+			reviewErr = &SecurityError{
+				Message:   "不允许的关键字: select",
+				ErrorType: KeywordNotAllowed,
+				Keyword:   "select",
+			}
+			return false
+		case *ast.ChanType:
+			reviewErr = &SecurityError{
+				Message:   "不允许的关键字: chan",
+				ErrorType: KeywordNotAllowed,
+				Keyword:   "chan",
+			}
+			return false
+		case *ast.MapType:
+			reviewErr = &SecurityError{
+				Message:   "不允许的关键字: map",
+				ErrorType: KeywordNotAllowed,
+				Keyword:   "map",
+			}
+			return false
+		case *ast.BranchStmt:
+			if x.Tok == token.GOTO {
+				reviewErr = &SecurityError{
+					Message:   "不允许的关键字: goto",
+					ErrorType: KeywordNotAllowed,
+					Keyword:   "goto",
+				}
+				return false
+			}
+		case *ast.CallExpr:
+			if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "cap" {
+				reviewErr = &SecurityError{
+					Message:   "不允许的关键字: cap",
+					ErrorType: KeywordNotAllowed,
+					Keyword:   "cap",
+				}
+				return false
+			}
+		case *ast.SelectorExpr:
+			if ident, ok := x.X.(*ast.Ident); ok && ident.Name == "unsafe" {
+				reviewErr = &SecurityError{
+					Message:   "不允许的关键字: unsafe",
+					ErrorType: KeywordNotAllowed,
+					Keyword:   "unsafe",
+				}
+				return false
 			}
 		}
 		return true
 	})
 
-	return nil
+	return reviewErr
 }
 
 // IsKeywordAllowed 检查关键字是否被允许
 func (s *SecurityReviewerImpl) IsKeywordAllowed(keyword string) bool {
-	// 允许所有标识符，只限制特定的危险关键字
-	// 危险关键字列表
 	dangerousKeywords := map[string]bool{
 		"unsafe": true,
 		"go":     true,
@@ -116,17 +186,14 @@ func (s *SecurityReviewerImpl) IsKeywordAllowed(keyword string) bool {
 		"cap":    true,
 	}
 
-	// 如果在危险关键字列表中，则不允许
 	if dangerousKeywords[keyword] {
 		return false
 	}
 
-	// 如果是基本类型或控制流关键字，则允许
 	if s.allowedKeywords[keyword] {
 		return true
 	}
 
-	// 其他标识符默认允许（函数名、变量名等）
 	return true
 }
 
@@ -149,6 +216,7 @@ type SecurityErrorType int
 const (
 	ImportNotAllowed SecurityErrorType = iota
 	KeywordNotAllowed
+	GlobalVarNotAllowed
 )
 
 func (e *SecurityError) Error() string {

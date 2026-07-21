@@ -1,19 +1,25 @@
 package vm
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lengzhao/vm/abi"
 )
 
 // ContractCompiler 编译器模块接口
-// 根据简化设计原则，接口已精简为核心功能
 type ContractCompiler interface {
 	// Compile 编译源代码
 	Compile(sourceCode string) (*CompiledContract, error)
@@ -27,132 +33,447 @@ type ContractCompiler interface {
 
 // CompiledContract 编译后的合约
 type CompiledContract struct {
-	// 合约可执行文件路径
 	ExecutablePath string
-
-	// ABI信息
-	ABI *abi.ABI
-
-	// 编译时间
-	CompileTime time.Time
-
-	// 源代码哈希
-	SourceHash string
-
-	// 合约地址
-	Address string
+	ABI            *abi.ABI
+	CompileTime    time.Time
+	SourceHash     string
+	Address        string
 }
 
 // ContractCompilerImpl 编译器模块实现
 type ContractCompilerImpl struct {
-	// 安全审查模块
-	securityReviewer SecurityReviewer
-
-	// ABI生成模块
-	abiGenerator ABIGenerator
-
-	// Gas消耗基础值
+	securityReviewer   SecurityReviewer
+	abiGenerator       ABIGenerator
 	baseGasConsumption uint64
+	outputDir          string
+	enableSecurity     bool
 }
 
 // NewContractCompiler 创建新的编译器模块实例
 func NewContractCompiler() ContractCompiler {
+	return NewContractCompilerWithOptions("", true)
+}
+
+// NewContractCompilerWithOptions 创建带输出目录与安全开关的编译器
+func NewContractCompilerWithOptions(outputDir string, enableSecurity bool) ContractCompiler {
+	if outputDir == "" {
+		outputDir = filepath.Join(os.TempDir(), "lengzhao-vm-build")
+	}
 	return &ContractCompilerImpl{
 		securityReviewer:   NewSecurityReviewer(),
 		abiGenerator:       NewABIGenerator(),
-		baseGasConsumption: 1, // 每行代码消耗1个Gas
+		baseGasConsumption: 1,
+		outputDir:          outputDir,
+		enableSecurity:     enableSecurity,
 	}
 }
 
 // Compile 编译源代码
 func (c *ContractCompilerImpl) Compile(sourceCode string) (*CompiledContract, error) {
-	// 验证源代码
+	if strings.TrimSpace(sourceCode) == "" {
+		return nil, fmt.Errorf("source code cannot be empty")
+	}
+
 	if err := c.Validate(sourceCode); err != nil {
 		return nil, err
 	}
 
-	// 注入Gas计费代码
+	contractABI, err := c.abiGenerator.Generate(sourceCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate ABI: %w", err)
+	}
+
 	gasInjectedCode, err := c.InjectGas(sourceCode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inject gas: %w", err)
 	}
 
-	// 生成带main函数的代码
-	mainCode, err := c.generateMainFunction(gasInjectedCode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate main function: %w", err)
-	}
-
-	// 生成ABI（基于原始代码，不包含main函数）
-	contractABI, err := c.abiGenerator.Generate(gasInjectedCode)
-	if err != nil {
+	if err := c.ensureNoMain(gasInjectedCode); err != nil {
 		return nil, err
 	}
 
-	// 生成源代码哈希
-	hash := generateHash(mainCode)
+	entryCode, err := c.generateEntryFile(contractABI)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate entry: %w", err)
+	}
 
-	// 创建编译后的合约对象
-	compiledContract := &CompiledContract{
-		ExecutablePath: "", // 实际编译过程将在后续实现
+	hash := generateHash(sourceCode)
+	execPath, err := c.buildExecutable(hash, gasInjectedCode, entryCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build contract: %w", err)
+	}
+
+	return &CompiledContract{
+		ExecutablePath: execPath,
 		ABI:            contractABI,
 		CompileTime:    time.Now(),
 		SourceHash:     hash,
-		Address:        "", // 合约地址将在部署时设置
-	}
-
-	return compiledContract, nil
+		Address:        "",
+	}, nil
 }
 
-// generateMainFunction 生成Main函数
-// 注意：此函数仅供框架内部使用，不应在合约源码中包含main函数
-func (c *ContractCompilerImpl) generateMainFunction(sourceCode string) (string, error) {
-	// 智能合约不应包含main函数，框架会在编译时自动生成
-	// 检查源代码是否包含main函数
+func (c *ContractCompilerImpl) ensureNoMain(sourceCode string) error {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "", sourceCode, parser.ParseComments)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse source code: %w", err)
+		return fmt.Errorf("failed to parse source code: %w", err)
 	}
 
-	// 检查是否已存在main函数
 	for _, decl := range file.Decls {
-		if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-			if funcDecl.Name.Name == "main" {
-				return "", fmt.Errorf("contract source code should not contain main function")
-			}
+		if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl.Name.Name == "main" {
+			return fmt.Errorf("contract source code should not contain main function")
+		}
+	}
+	return nil
+}
+
+// generateEntryFile 生成合约入口与 Gas 辅助代码
+func (c *ContractCompilerImpl) generateEntryFile(contractABI *abi.ABI) (string, error) {
+	var b strings.Builder
+	b.WriteString(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+)
+
+var __vmGasConsumed uint64
+var __vmGasLimit uint64
+
+func __vmConsumeGas(amount uint64) {
+	__vmGasConsumed += amount
+	if __vmGasLimit > 0 && __vmGasConsumed > __vmGasLimit {
+		panic("gas limit exceeded")
+	}
+}
+
+type __vmCallRequest struct {
+	Function string            ` + "`json:\"function\"`" + `
+	Args     []json.RawMessage ` + "`json:\"args\"`" + `
+}
+
+type __vmCallResponse struct {
+	OK     bool        ` + "`json:\"ok\"`" + `
+	Result interface{} ` + "`json:\"result,omitempty\"`" + `
+	Error  string      ` + "`json:\"error,omitempty\"`" + `
+	Gas    uint64      ` + "`json:\"gas\"`" + `
+}
+
+func __vmWriteResponse(resp __vmCallResponse) {
+	resp.Gas = __vmGasConsumed
+	enc := json.NewEncoder(os.Stdout)
+	_ = enc.Encode(resp)
+}
+
+func __vmParseInt(raw json.RawMessage) (int, error) {
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err != nil {
+		var s string
+		if err2 := json.Unmarshal(raw, &s); err2 != nil {
+			return 0, err
+		}
+		v, err2 := strconv.Atoi(s)
+		return v, err2
+	}
+	v, err := n.Int64()
+	return int(v), err
+}
+
+func __vmParseInt64(raw json.RawMessage) (int64, error) {
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, err
+	}
+	return n.Int64()
+}
+
+func __vmParseUint64(raw json.RawMessage) (uint64, error) {
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(string(n), 10, 64)
+}
+
+func __vmParseFloat64(raw json.RawMessage) (float64, error) {
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, err
+	}
+	return n.Float64()
+}
+
+func __vmParseString(raw json.RawMessage) (string, error) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", err
+	}
+	return s, nil
+}
+
+func __vmParseBool(raw json.RawMessage) (bool, error) {
+	var v bool
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return false, err
+	}
+	return v, nil
+}
+
+func main() {
+	if limit := os.Getenv("VM_GAS_LIMIT"); limit != "" {
+		if v, err := strconv.ParseUint(limit, 10, 64); err == nil {
+			__vmGasLimit = v
 		}
 	}
 
-	// 生成Main函数代码
-	mainFunc := `
-func main() {
-	// 合约入口点由框架自动生成
-	// 不应在合约源码中手动定义main函数
+	__vmConsumeGas(10)
+
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		__vmWriteResponse(__vmCallResponse{OK: false, Error: err.Error()})
+		os.Exit(1)
+	}
+
+	var req __vmCallRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		__vmWriteResponse(__vmCallResponse{OK: false, Error: "invalid request json: " + err.Error()})
+		os.Exit(1)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			__vmWriteResponse(__vmCallResponse{OK: false, Error: fmt.Sprint(r)})
+			os.Exit(1)
+		}
+	}()
+
+	switch req.Function {
+`)
+
+	if contractABI != nil {
+		for _, fn := range contractABI.Functions {
+			caseCode, err := generateFunctionCase(fn)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(caseCode)
+		}
+	}
+
+	b.WriteString(`	default:
+		__vmWriteResponse(__vmCallResponse{OK: false, Error: "unknown function: " + req.Function})
+		os.Exit(1)
+	}
 }
-`
+`)
 
-	// 在源代码末尾添加Main函数
-	modifiedCode := sourceCode + mainFunc
+	formatted, err := format.Source([]byte(b.String()))
+	if err != nil {
+		return b.String(), nil
+	}
+	return string(formatted), nil
+}
 
-	return modifiedCode, nil
+func generateFunctionCase(fn abi.Function) (string, error) {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("\tcase %q:\n", fn.Name))
+
+	argNames := make([]string, 0, len(fn.Inputs))
+	for i, input := range fn.Inputs {
+		name := input.Name
+		if name == "" {
+			name = fmt.Sprintf("arg%d", i)
+		}
+		safeName := sanitizeIdent(name)
+		argNames = append(argNames, safeName)
+
+		parser, goType, err := parserForType(input.Type)
+		if err != nil {
+			return "", fmt.Errorf("function %s: %w", fn.Name, err)
+		}
+		b.WriteString(fmt.Sprintf("\t\tif len(req.Args) <= %d {\n", i))
+		b.WriteString(fmt.Sprintf("\t\t\t__vmWriteResponse(__vmCallResponse{OK: false, Error: \"missing arg %d for %s\"})\n", i, fn.Name))
+		b.WriteString("\t\t\tos.Exit(1)\n")
+		b.WriteString("\t\t}\n")
+		b.WriteString(fmt.Sprintf("\t\t%s, err := %s(req.Args[%d])\n", safeName, parser, i))
+		b.WriteString("\t\tif err != nil {\n")
+		b.WriteString(fmt.Sprintf("\t\t\t__vmWriteResponse(__vmCallResponse{OK: false, Error: \"invalid arg %d (%s): \" + err.Error()})\n", i, goType))
+		b.WriteString("\t\t\tos.Exit(1)\n")
+		b.WriteString("\t\t}\n")
+		_ = goType
+	}
+
+	callArgs := strings.Join(argNames, ", ")
+	switch len(fn.Outputs) {
+	case 0:
+		b.WriteString(fmt.Sprintf("\t\t%s(%s)\n", fn.Name, callArgs))
+		b.WriteString("\t\t__vmWriteResponse(__vmCallResponse{OK: true})\n")
+	case 1:
+		b.WriteString(fmt.Sprintf("\t\tresult := %s(%s)\n", fn.Name, callArgs))
+		b.WriteString("\t\t__vmWriteResponse(__vmCallResponse{OK: true, Result: result})\n")
+	default:
+		outs := make([]string, len(fn.Outputs))
+		for i := range fn.Outputs {
+			outs[i] = fmt.Sprintf("out%d", i)
+		}
+		b.WriteString(fmt.Sprintf("\t\t%s := %s(%s)\n", strings.Join(outs, ", "), fn.Name, callArgs))
+		b.WriteString(fmt.Sprintf("\t\t__vmWriteResponse(__vmCallResponse{OK: true, Result: []interface{}{%s}})\n", strings.Join(outs, ", ")))
+	}
+	return b.String(), nil
+}
+
+func sanitizeIdent(name string) string {
+	name = strings.ReplaceAll(name, "-", "_")
+	if name == "" || !((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z') || name[0] == '_') {
+		return "arg_" + name
+	}
+	return name
+}
+
+func parserForType(typeName string) (parserName, goType string, err error) {
+	switch typeName {
+	case "int":
+		return "__vmParseInt", "int", nil
+	case "int64":
+		return "__vmParseInt64", "int64", nil
+	case "uint64":
+		return "__vmParseUint64", "uint64", nil
+	case "float64":
+		return "__vmParseFloat64", "float64", nil
+	case "string":
+		return "__vmParseString", "string", nil
+	case "bool":
+		return "__vmParseBool", "bool", nil
+	default:
+		return "", "", fmt.Errorf("unsupported parameter type: %s", typeName)
+	}
+}
+
+func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode string) (string, error) {
+	if err := os.MkdirAll(c.outputDir, 0755); err != nil {
+		return "", err
+	}
+
+	buildDir := filepath.Join(c.outputDir, "build_"+hash)
+	if err := os.RemoveAll(buildDir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(buildDir, 0755); err != nil {
+		return "", err
+	}
+
+	normalized, err := ensurePackageMain(contractCode)
+	if err != nil {
+		return "", err
+	}
+
+	contractPath := filepath.Join(buildDir, "contract.go")
+	entryPath := filepath.Join(buildDir, "entry.go")
+	modPath := filepath.Join(buildDir, "go.mod")
+	execPath := filepath.Join(c.outputDir, "contract_"+hash)
+
+	if err := os.WriteFile(contractPath, []byte(normalized), 0644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(entryPath, []byte(entryCode), 0644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(modPath, []byte("module contract_"+hash+"\n\ngo 1.22\n"), 0644); err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command("go", "build", "-o", execPath, ".")
+	cmd.Dir = buildDir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stderr
+	if err := cmd.Run(); err != nil {
+		slog.Error("contract build failed", "hash", hash, "stderr", stderr.String())
+		return "", fmt.Errorf("go build failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	return execPath, nil
+}
+
+func ensurePackageMain(sourceCode string) (string, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", sourceCode, parser.ParseComments)
+	if err != nil {
+		return "", err
+	}
+	file.Name = ast.NewIdent("main")
+	var buf bytes.Buffer
+	if err := format.Node(&buf, fset, file); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 // Validate 验证源代码
 func (c *ContractCompilerImpl) Validate(sourceCode string) error {
-	// 使用安全审查模块进行验证
+	if !c.enableSecurity {
+		fset := token.NewFileSet()
+		_, err := parser.ParseFile(fset, "", sourceCode, parser.AllErrors)
+		return err
+	}
 	return c.securityReviewer.Review(sourceCode)
 }
 
-// InjectGas 注入Gas计费代码
+// InjectGas 在函数入口和循环体注入 Gas 消耗点
 func (c *ContractCompilerImpl) InjectGas(sourceCode string) (string, error) {
-	// 简化实现：在源代码中添加注释表示Gas注入
-	// 在实际实现中，这里会进行AST分析和代码注入
-	injectedCode := "// Gas-injected code\n" + sourceCode
-	return injectedCode, nil
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", sourceCode, parser.ParseComments)
+	if err != nil {
+		return "", err
+	}
+
+	amount := c.baseGasConsumption
+	if amount == 0 {
+		amount = 1
+	}
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.FuncDecl:
+			if x.Body == nil || x.Name.Name == "main" {
+				return true
+			}
+			x.Body.List = append([]ast.Stmt{consumeGasStmt(amount)}, x.Body.List...)
+		case *ast.ForStmt:
+			if x.Body == nil {
+				return true
+			}
+			x.Body.List = append([]ast.Stmt{consumeGasStmt(amount)}, x.Body.List...)
+		case *ast.RangeStmt:
+			if x.Body == nil {
+				return true
+			}
+			x.Body.List = append([]ast.Stmt{consumeGasStmt(amount)}, x.Body.List...)
+		}
+		return true
+	})
+
+	var buf bytes.Buffer
+	if err := format.Node(&buf, fset, file); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
-// generateHash 生成源代码的哈希值
+func consumeGasStmt(amount uint64) ast.Stmt {
+	return &ast.ExprStmt{
+		X: &ast.CallExpr{
+			Fun: ast.NewIdent("__vmConsumeGas"),
+			Args: []ast.Expr{
+				&ast.BasicLit{Kind: token.INT, Value: fmt.Sprintf("%d", amount)},
+			},
+		},
+	}
+}
+
 func generateHash(sourceCode string) string {
 	hash := sha256.Sum256([]byte(sourceCode))
 	return hex.EncodeToString(hash[:])[:16]

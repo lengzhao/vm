@@ -6,7 +6,6 @@ import (
 
 func TestNewSecurityReviewer(t *testing.T) {
 	reviewer := NewSecurityReviewer()
-	
 	if reviewer == nil {
 		t.Error("Expected SecurityReviewer to be created, got nil")
 	}
@@ -14,16 +13,14 @@ func TestNewSecurityReviewer(t *testing.T) {
 
 func TestIsKeywordAllowed(t *testing.T) {
 	reviewer := NewSecurityReviewer()
-	
-	// 测试允许的关键字
+
 	allowedKeywords := []string{"int", "string", "if", "for", "func", "package"}
 	for _, keyword := range allowedKeywords {
 		if !reviewer.IsKeywordAllowed(keyword) {
 			t.Errorf("Expected keyword '%s' to be allowed", keyword)
 		}
 	}
-	
-	// 测试不允许的关键字
+
 	disallowedKeywords := []string{"unsafe", "go", "select", "chan", "goto", "map", "cap"}
 	for _, keyword := range disallowedKeywords {
 		if reviewer.IsKeywordAllowed(keyword) {
@@ -34,16 +31,14 @@ func TestIsKeywordAllowed(t *testing.T) {
 
 func TestIsImportAllowed(t *testing.T) {
 	reviewer := NewSecurityReviewer()
-	
-	// 测试允许的导入
+
 	allowedImports := []string{"fmt", "strconv", "math", "time", "errors", "github.com/lengzhao/vm"}
 	for _, imp := range allowedImports {
 		if !reviewer.IsImportAllowed(imp) {
 			t.Errorf("Expected import '%s' to be allowed", imp)
 		}
 	}
-	
-	// 测试不允许的导入
+
 	disallowedImports := []string{"os", "net", "syscall", "unsafe"}
 	for _, imp := range disallowedImports {
 		if reviewer.IsImportAllowed(imp) {
@@ -54,7 +49,7 @@ func TestIsImportAllowed(t *testing.T) {
 
 func TestReview_ValidCode(t *testing.T) {
 	reviewer := NewSecurityReviewer()
-	
+
 	validCode := `
 package main
 
@@ -63,7 +58,7 @@ import (
 	"strconv"
 )
 
-func main() {
+func Hello() {
 	fmt.Println("Hello, World!")
 }
 
@@ -71,16 +66,15 @@ func Add(a, b int) int {
 	return a + b
 }
 `
-	
-	err := reviewer.Review(validCode)
-	if err != nil {
+
+	if err := reviewer.Review(validCode); err != nil {
 		t.Errorf("Expected no error for valid code, got %v", err)
 	}
 }
 
 func TestReview_InvalidImport(t *testing.T) {
 	reviewer := NewSecurityReviewer()
-	
+
 	invalidCode := `
 package main
 
@@ -88,22 +82,116 @@ import (
 	"os"
 )
 
-func main() {
-	fmt.Println("Hello, World!")
-}
+func Hello() {}
 `
-	
+
 	err := reviewer.Review(invalidCode)
 	if err == nil {
-		t.Error("Expected error for invalid import, got nil")
+		t.Fatal("Expected error for invalid import, got nil")
 	}
-	
+
 	secErr, ok := err.(*SecurityError)
 	if !ok {
-		t.Errorf("Expected SecurityError, got %T", err)
+		t.Fatalf("Expected SecurityError, got %T", err)
 	}
-	
 	if secErr.ErrorType != ImportNotAllowed {
 		t.Errorf("Expected ImportNotAllowed error type, got %v", secErr.ErrorType)
+	}
+}
+
+func TestReview_ForbiddenKeywords(t *testing.T) {
+	reviewer := NewSecurityReviewer()
+
+	cases := []struct {
+		name string
+		code string
+		key  string
+	}{
+		{
+			name: "goroutine",
+			code: "package main\nfunc Hello() { go Hello() }\n",
+			key:  "go",
+		},
+		{
+			name: "channel",
+			code: "package main\nfunc Hello() { var c chan int; _ = c }\n",
+			key:  "chan",
+		},
+		{
+			name: "map",
+			code: "package main\nfunc Hello() { var m map[string]int; _ = m }\n",
+			key:  "map",
+		},
+		{
+			name: "goto",
+			code: "package main\nfunc Hello() { goto Label\nLabel:\n}\n",
+			key:  "goto",
+		},
+		{
+			name: "cap",
+			code: "package main\nfunc Hello() { s := make([]int, 0, 1); _ = cap(s) }\n",
+			key:  "cap",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := reviewer.Review(tc.code)
+			if err == nil {
+				t.Fatalf("Expected error for %s", tc.name)
+			}
+			secErr, ok := err.(*SecurityError)
+			if !ok {
+				t.Fatalf("Expected SecurityError, got %T", err)
+			}
+			if secErr.ErrorType != KeywordNotAllowed {
+				t.Errorf("Expected KeywordNotAllowed, got %v", secErr.ErrorType)
+			}
+			if secErr.Keyword != tc.key {
+				t.Errorf("Expected keyword %s, got %s", tc.key, secErr.Keyword)
+			}
+		})
+	}
+}
+
+func TestReview_GlobalVarNotAllowed(t *testing.T) {
+	reviewer := NewSecurityReviewer()
+
+	code := `
+package main
+
+var counter int
+
+func Hello() int {
+	return counter
+}
+`
+	err := reviewer.Review(code)
+	if err == nil {
+		t.Fatal("Expected error for package-level var")
+	}
+	secErr, ok := err.(*SecurityError)
+	if !ok {
+		t.Fatalf("Expected SecurityError, got %T", err)
+	}
+	if secErr.ErrorType != GlobalVarNotAllowed {
+		t.Errorf("Expected GlobalVarNotAllowed, got %v", secErr.ErrorType)
+	}
+}
+
+func TestReview_ConstAllowed(t *testing.T) {
+	reviewer := NewSecurityReviewer()
+
+	code := `
+package main
+
+const Max = 100
+
+func Hello() int {
+	return Max
+}
+`
+	if err := reviewer.Review(code); err != nil {
+		t.Errorf("Expected const to be allowed, got %v", err)
 	}
 }

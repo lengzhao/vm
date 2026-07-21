@@ -13,11 +13,12 @@
 ## 已实现功能
 
 ### 核心模块
-1. **安全审查模块**：实现关键字和导入白名单检查
+1. **安全审查模块**：Import 白名单、危险 AST 节点、包级可变状态检查
 2. **ABI生成模块**：从合约源代码提取接口信息
-3. **编译器模块**：验证和编译合约源代码
-4. **Gas计费模块**：跟踪和限制合约执行的资源消耗
-5. **合约管理模块**：管理合约的生命周期，包括部署、存储和查询
+3. **编译器模块**：Gas 注入、入口生成、`go build` 产出真实可执行文件
+4. **Runner**：进程超时执行合约产物，JSON 请求/响应
+5. **Gas计费模块**：宿主计量 + 编译期函数/循环消耗点
+6. **合约管理模块**：部署、存储和查询合约产物
 
 ### 安全机制
 - 关键字白名单机制：限制危险关键字的使用
@@ -66,13 +67,9 @@ func main() {
     // 创建虚拟机实例
     vm := vm.NewVMEngine(config)
 
-    // 合约源代码
+    // 合约源代码（不要写 main，由编译器生成入口）
     sourceCode := `
 package main
-
-func main() {
-    println("Hello, Smart Contract World!")
-}
 
 func Add(a, b int) int {
     return a + b
@@ -139,6 +136,13 @@ func Add(a, b int) int {
 ## 开发计划
 
 查看 [todo.md](todo.md) 了解详细的开发计划和进度。
+
+### 使用示例
+
+```bash
+go run ./examples/basic
+go run ./examples/complete
+```
 
 ## 测试
 

@@ -9,23 +9,33 @@
 ```text
 docs/
 ├── 00_directory_structure.md    # 文档目录结构说明
-├── architecture.md              # 系统架构设计文档
+├── architecture.md              # 系统架构设计文档（流水线优先）
 ├── modular_architecture_design.md # 模块化架构设计文档
 ├── default_library.md           # 默认库接口规范
-├── execution_environment.md     # 执行环境设计
+├── execution_environment.md     # 执行环境设计（Runner MVP）
 ├── gas_metering.md              # Gas计费与资源控制设计
 ├── security_review.md           # 安全审查规范
 ├── abi_generation.md            # ABI生成与关键字处理设计
 └── detailed_design/             # 详细设计文档目录
-    ├── detailed_design_overview.md        # 详细设计文档总览
-    ├── vm_engine_detailed_design.md       # 虚拟机执行引擎详细设计
-    ├── security_review_detailed_design.md # 安全审查系统详细设计
-    ├── compiler_detailed_design.md        # 编译器模块详细设计
-    ├── execution_environment_detailed_design.md # 执行环境详细设计
-    ├── gas_metering_detailed_design.md    # Gas计费系统详细设计
-    ├── abi_generator_detailed_design.md   # ABI生成器详细设计
-    ├── contract_manager_detailed_design.md # 合约管理模块详细设计（包含原存储管理功能）
-    └── contract_processing_flow.md        # 合约处理流程
+    ├── detailed_design_overview.md
+    ├── vm_engine_detailed_design.md
+    ├── security_review_detailed_design.md
+    ├── compiler_detailed_design.md
+    ├── execution_environment_detailed_design.md
+    ├── gas_metering_detailed_design.md
+    ├── abi_generator_detailed_design.md
+    ├── contract_manager_detailed_design.md
+    └── contract_processing_flow.md
+```
+
+代码侧当前为扁平结构（无 `internal`）：
+
+```text
+vm/
+├── engine.go / compiler.go / runner.go / security.go / gas.go / contract.go
+├── abi/
+├── examples/{basic,gas,complete,advanced,event}/
+└── docs/
 ```
 
 ## 3. 文档分类
