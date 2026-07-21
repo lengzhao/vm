@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -179,5 +180,106 @@ func Add(a, b int) int {
 	}
 	if string(result.Data) != "7" {
 		t.Fatalf("expected 7, got %s", string(result.Data))
+	}
+}
+
+func TestDeployPersistsGasProfile(t *testing.T) {
+	buildDir := t.TempDir()
+	storeDir := t.TempDir()
+
+	source := `
+package main
+
+import "github.com/lengzhao/vm/contractapi"
+
+func Add(a, b int) int {
+	return a + b
+}
+
+func Info() string {
+	contractapi.Log("info", "k", "v")
+	return "ok"
+}
+`
+	compiler := NewContractCompilerWithOptions(buildDir, true)
+	compiled, err := compiler.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if compiled.GasProfile == nil {
+		t.Fatal("expected GasProfile on CompiledContract")
+	}
+	if _, ok := compiled.GasProfile.Functions["Add"]; !ok {
+		t.Fatal("expected Add in compiled GasProfile")
+	}
+	if _, ok := compiled.GasProfile.Functions["Info"]; !ok {
+		t.Fatal("expected Info in compiled GasProfile")
+	}
+
+	manager := NewContractManager(storeDir, NewSecurityReviewer(), NewABIGenerator()).(*ContractManagerImpl)
+	address, err := manager.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	profilePath := filepath.Join(storeDir, address, "gas_profile.json")
+	data, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatalf("gas_profile.json missing: %v", err)
+	}
+
+	var onDisk GasProfile
+	if err := json.Unmarshal(data, &onDisk); err != nil {
+		t.Fatalf("unmarshal gas_profile.json: %v", err)
+	}
+	for _, name := range []string{"Add", "Info"} {
+		if _, ok := onDisk.Functions[name]; !ok {
+			t.Fatalf("gas_profile.json missing function %q", name)
+		}
+	}
+
+	loaded, err := manager.GetGasProfile(address)
+	if err != nil {
+		t.Fatalf("GetGasProfile: %v", err)
+	}
+	if _, ok := loaded.Functions["Add"]; !ok {
+		t.Fatal("GetGasProfile missing Add")
+	}
+	if _, ok := loaded.Functions["Info"]; !ok {
+		t.Fatal("GetGasProfile missing Info")
+	}
+}
+
+func TestCompileUsesCacheStillBuildsGasProfile(t *testing.T) {
+	buildDir := t.TempDir()
+	compiler := NewContractCompilerWithOptions(buildDir, true)
+
+	source := `
+package main
+
+func Add(a, b int) int {
+	return a + b
+}
+`
+	first, err := compiler.Compile(source)
+	if err != nil {
+		t.Fatalf("first compile: %v", err)
+	}
+	if first.GasProfile == nil {
+		t.Fatal("first compile: expected GasProfile")
+	}
+
+	second, err := compiler.Compile(source)
+	if err != nil {
+		t.Fatalf("cache-hit compile: %v", err)
+	}
+	if second.GasProfile == nil {
+		t.Fatal("cache-hit compile: expected GasProfile rebuilt from source")
+	}
+	if _, ok := second.GasProfile.Functions["Add"]; !ok {
+		t.Fatal("cache-hit compile: expected Add in GasProfile")
+	}
+	if second.ExecutablePath != first.ExecutablePath {
+		t.Fatalf("expected cache hit path %s, got %s", first.ExecutablePath, second.ExecutablePath)
 	}
 }

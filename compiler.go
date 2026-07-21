@@ -35,6 +35,7 @@ type ContractCompiler interface {
 type CompiledContract struct {
 	ExecutablePath string
 	ABI            *abi.ABI
+	GasProfile     *GasProfile
 	CompileTime    time.Time
 	SourceHash     string
 	Address        string
@@ -83,12 +84,18 @@ func (c *ContractCompilerImpl) Compile(sourceCode string) (*CompiledContract, er
 		return nil, fmt.Errorf("failed to generate ABI: %w", err)
 	}
 
+	gasProfile, err := BuildGasProfile(sourceCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build gas profile: %w", err)
+	}
+
 	hash := generateBuildHash(sourceCode)
 	execPath := filepath.Join(c.outputDir, "contract_"+hash)
 	if cached, ok := loadCachedExecutable(execPath); ok {
 		return &CompiledContract{
 			ExecutablePath: cached,
 			ABI:            contractABI,
+			GasProfile:     gasProfile,
 			CompileTime:    time.Now(),
 			SourceHash:     hash,
 			Address:        "",
@@ -117,6 +124,7 @@ func (c *ContractCompilerImpl) Compile(sourceCode string) (*CompiledContract, er
 	return &CompiledContract{
 		ExecutablePath: builtPath,
 		ABI:            contractABI,
+		GasProfile:     gasProfile,
 		CompileTime:    time.Now(),
 		SourceHash:     hash,
 		Address:        "",

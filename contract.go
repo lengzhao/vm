@@ -25,6 +25,9 @@ type ContractManager interface {
 	// GetContractABI 获取合约ABI
 	GetContractABI(address string) (*abi.ABI, error)
 
+	// GetGasProfile 获取合约 GasProfile
+	GetGasProfile(address string) (*GasProfile, error)
+
 	// StoreContract 存储合约
 	StoreContract(contract *CompiledContract, address string) error
 
@@ -166,7 +169,38 @@ func (c *ContractManagerImpl) StoreContract(contract *CompiledContract, address 
 		}
 	}
 
+	// 创建 GasProfile 文件
+	if contract.GasProfile != nil {
+		profilePath := filepath.Join(contractDir, "gas_profile.json")
+		profileBytes, err := json.MarshalIndent(contract.GasProfile, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal gas profile: %w", err)
+		}
+
+		if err := os.WriteFile(profilePath, profileBytes, 0644); err != nil {
+			return fmt.Errorf("failed to write gas profile file: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// GetGasProfile 读取部署目录中的 gas_profile.json
+func (c *ContractManagerImpl) GetGasProfile(address string) (*GasProfile, error) {
+	profilePath := filepath.Join(c.storageDir, address, "gas_profile.json")
+	data, err := os.ReadFile(profilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("gas profile not found for contract %s", address)
+		}
+		return nil, fmt.Errorf("failed to read gas profile: %w", err)
+	}
+
+	var profile GasProfile
+	if err := json.Unmarshal(data, &profile); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gas profile: %w", err)
+	}
+	return &profile, nil
 }
 
 // LoadContract 加载合约
@@ -208,8 +242,13 @@ func (c *ContractManagerImpl) LoadContract(address string) (*CompiledContract, e
 		return nil, fmt.Errorf("failed to read contract directory: %w", err)
 	}
 
+	skipNames := map[string]bool{
+		"metadata.json":    true,
+		"abi.json":         true,
+		"gas_profile.json": true,
+	}
 	for _, entry := range entries {
-		if !entry.IsDir() && entry.Name() != "metadata.json" && entry.Name() != "abi.json" {
+		if !entry.IsDir() && !skipNames[entry.Name()] {
 			execPath = filepath.Join(contractDir, entry.Name())
 			break
 		}
@@ -222,6 +261,10 @@ func (c *ContractManagerImpl) LoadContract(address string) (*CompiledContract, e
 		CompileTime:    metadata.DeployTime, // 使用部署时间作为编译时间
 		SourceHash:     metadata.SourceHash,
 		Address:        address,
+	}
+
+	if profile, err := c.GetGasProfile(address); err == nil {
+		contract.GasProfile = profile
 	}
 
 	return contract, nil
