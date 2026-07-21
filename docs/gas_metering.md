@@ -138,7 +138,7 @@ Estimated = entry_gas
           + Σ(api_calls[name] * GasTable[name])
 ```
 
-故意偏高；不做路径敏感分析。无 `gas_profile.json`（旧合约）时返回 error，需重新 Compile/Deploy。
+按约定公式的启发式估算（非严格 gas 上界）：同名 helper 多次调用按名去重、循环内 API 不按迭代放大，这些场景可能出现 static &lt; dry_run。需要硬上限时请用 DryRun。不做路径敏感分析。无 `gas_profile.json`（旧合约）时返回 error，需重新 Compile/Deploy。
 
 ### 6.2 DryRun 模式
 

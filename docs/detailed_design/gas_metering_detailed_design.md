@@ -26,8 +26,8 @@ type GasMetering interface {
 | 计费点 | 消耗 | 实现 |
 |--------|------|------|
 | 入口基础 Gas | 10 | entry：`InitGas` + `ConsumeGas(10)` |
-| 函数入口 | 1 | 编译注入 `contractapi.ConsumeGas(1)` |
-| `for` / `range` 每次迭代 | 1 | 编译注入 |
+| 函数入口 | 1 | 编译注入 `__vmConsumeGas(1)`，委托 `contractapi.ConsumeGas` |
+| `for` / `range` 每次迭代 | 1 | 同上 |
 | BlockHeight / BlockTime / Sender / ContractAddress | 1 | `contractapi` 内部 |
 | Log | 2 | `contractapi` 内部 |
 
@@ -57,7 +57,7 @@ Compile 扫描原始源码生成；Deploy 写入 `gas_profile.json`。
 func (vm *VMEngine) EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)
 ```
 
-- **静态（默认）**：读 Profile，按保守上界公式估算；`Mode = "static"`
+- **静态（默认）**：读 Profile，按约定公式启发式估算（非严格上界）；`Mode = "static"`
 - **DryRun**：真执行取 `GasConsumed`；`Mode = "dry_run"`
 - 无 Profile / 未知函数 → error
 - `opts == nil` → 静态 + 默认 LoopBound(1000)
