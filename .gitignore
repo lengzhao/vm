@@ -56,3 +56,6 @@ coverage.html
 
 # Backup files
 *.bak
+
+# Git worktrees (local isolation)
+.worktrees/
