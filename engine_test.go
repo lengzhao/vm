@@ -603,6 +603,94 @@ func Info() (uint64, string, string) {
 	}
 }
 
+func TestEstimateGasStaticAndDryRun(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          1000000,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     time.Second * 30,
+		ContractStorageDir:   dir,
+	})
+
+	source := `
+package main
+
+import "github.com/lengzhao/vm/contractapi"
+
+func Info() (uint64, string, string) {
+	contractapi.Log("InfoCalled", "sender", contractapi.Sender())
+	return contractapi.BlockHeight(), contractapi.Sender(), contractapi.ContractAddress()
+}
+`
+	compiled, err := engine.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	address, err := engine.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	static, err := engine.EstimateGas(address, "Info", nil)
+	if err != nil {
+		t.Fatalf("static EstimateGas: %v", err)
+	}
+	if static.Mode != "static" {
+		t.Fatalf("static Mode=%q want static", static.Mode)
+	}
+	if !static.ProfileUsed {
+		t.Fatal("static ProfileUsed want true")
+	}
+	if static.Estimated == 0 {
+		t.Fatal("static Estimated want > 0")
+	}
+
+	host := &MemoryHost{
+		Height:   42,
+		Time:     1700000001,
+		From:     "alice",
+		Contract: Address(address),
+	}
+	dry, err := engine.EstimateGas(address, "Info", &EstimateOptions{
+		DryRun:  true,
+		CallCtx: &CallContext{Host: host},
+	})
+	if err != nil {
+		t.Fatalf("dry-run EstimateGas: %v", err)
+	}
+	if dry.Mode != "dry_run" {
+		t.Fatalf("dry Mode=%q want dry_run", dry.Mode)
+	}
+	if dry.Estimated == 0 {
+		t.Fatal("dry Estimated want > 0")
+	}
+	if static.Estimated < dry.Estimated {
+		t.Fatalf("static %d < dry %d", static.Estimated, dry.Estimated)
+	}
+
+	_, err = engine.EstimateGas(address, "NoSuch", nil)
+	if err == nil {
+		t.Fatal("expected error for unknown function")
+	}
+}
+
+func TestEstimateGasMissingProfile(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          1000000,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     time.Second * 10,
+		ContractStorageDir:   dir,
+	})
+
+	_, err := engine.EstimateGas("deadbeef", "Info", nil)
+	if err == nil {
+		t.Fatal("expected error for missing gas profile")
+	}
+}
+
 func TestCompileUsesCache(t *testing.T) {
 	dir := t.TempDir()
 	compiler := NewContractCompilerWithOptions(dir, true)

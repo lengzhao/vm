@@ -47,6 +47,23 @@ type ExecuteResult struct {
 	GasConsumed uint64
 }
 
+// EstimateOptions 控制 EstimateGas 的估算方式。
+// opts == nil 时等价于静态估算 + 默认 LoopBound。
+type EstimateOptions struct {
+	DryRun   bool
+	LoopBound uint64
+	Args     []any
+	CallCtx  *CallContext
+}
+
+// GasEstimate 是 EstimateGas 的返回结果。
+type GasEstimate struct {
+	Estimated   uint64
+	Mode        string // "static" | "dry_run"
+	ProfileUsed bool
+	Breakdown   map[string]uint64
+}
+
 // ABIGenerator ABI生成模块接口
 type ABIGenerator interface {
 	Generate(sourceCode string) (*abi.ABI, error)
@@ -228,6 +245,48 @@ func (vm *VMEngine) ExecuteWithContext(contractAddress, function string, callCtx
 		Data:        result.Data,
 		Events:      result.Events,
 		GasConsumed: result.GasConsumed,
+	}, nil
+}
+
+// EstimateGas 估算调用指定合约函数所需 Gas。
+// 默认读取 gas_profile.json 做静态保守上界；DryRun 时真执行取 GasConsumed。
+func (vm *VMEngine) EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error) {
+	if opts != nil && opts.DryRun {
+		var args []any
+		if opts.Args != nil {
+			args = opts.Args
+		}
+		result, err := vm.ExecuteWithContext(address, function, opts.CallCtx, args...)
+		if err != nil {
+			return nil, err
+		}
+		return &GasEstimate{
+			Estimated:   result.GasConsumed,
+			Mode:        "dry_run",
+			ProfileUsed: false,
+		}, nil
+	}
+
+	var loopBound uint64
+	if opts != nil {
+		loopBound = opts.LoopBound
+	}
+
+	profile, err := vm.contractManager.GetGasProfile(address)
+	if err != nil {
+		return nil, err
+	}
+
+	estimated, breakdown, err := EstimateFromProfile(profile, function, loopBound)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GasEstimate{
+		Estimated:   estimated,
+		Mode:        "static",
+		ProfileUsed: true,
+		Breakdown:   breakdown,
 	}, nil
 }
 
