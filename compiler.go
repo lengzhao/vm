@@ -153,14 +153,8 @@ import (
 	"github.com/lengzhao/vm/contractapi"
 )
 
-var __vmGasConsumed uint64
-var __vmGasLimit uint64
-
 func __vmConsumeGas(amount uint64) {
-	__vmGasConsumed += amount
-	if __vmGasLimit > 0 && __vmGasConsumed > __vmGasLimit {
-		panic("gas limit exceeded")
-	}
+	contractapi.ConsumeGas(amount)
 }
 
 type __vmCallRequest struct {
@@ -177,7 +171,7 @@ type __vmCallResponse struct {
 }
 
 func __vmWriteResponse(resp __vmCallResponse) {
-	resp.Gas = __vmGasConsumed
+	resp.Gas = contractapi.GasUsed()
 	resp.Events = contractapi.DrainEvents()
 	enc := json.NewEncoder(os.Stdout)
 	_ = enc.Encode(resp)
@@ -239,14 +233,16 @@ func __vmParseBool(raw json.RawMessage) (bool, error) {
 
 func main() {
 	contractapi.Reset()
+	contractapi.ResetGas()
 
-	if limit := os.Getenv("VM_GAS_LIMIT"); limit != "" {
-		if v, err := strconv.ParseUint(limit, 10, 64); err == nil {
-			__vmGasLimit = v
+	var limit uint64
+	if raw := os.Getenv("VM_GAS_LIMIT"); raw != "" {
+		if v, err := strconv.ParseUint(raw, 10, 64); err == nil {
+			limit = v
 		}
 	}
-
-	__vmConsumeGas(10)
+	contractapi.InitGas(limit)
+	contractapi.ConsumeGas(contractapi.GasEntryBase)
 
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -395,6 +391,7 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 	contractPath := filepath.Join(buildDir, "contract.go")
 	entryPath := filepath.Join(buildDir, "entry.go")
 	apiPath := filepath.Join(buildDir, "contractapi", "contractapi.go")
+	apiGasPath := filepath.Join(buildDir, "contractapi", "gas.go")
 	apiModPath := filepath.Join(buildDir, "contractapi", "go.mod")
 	modPath := filepath.Join(buildDir, "go.mod")
 
@@ -405,6 +402,9 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 		return "", err
 	}
 	if err := os.WriteFile(apiPath, []byte(embeddedContractAPISource), 0644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(apiGasPath, []byte(embeddedContractAPIGasSource), 0644); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(apiModPath, []byte("module github.com/lengzhao/vm/contractapi\n\ngo 1.22\n"), 0644); err != nil {
@@ -453,6 +453,8 @@ func generateBuildHash(sourceCode string) string {
 	_, _ = h.Write([]byte(compilerBuildID))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(embeddedContractAPISource))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(embeddedContractAPIGasSource))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(sourceCode))
 	return hex.EncodeToString(h.Sum(nil))[:16]

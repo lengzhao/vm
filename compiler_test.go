@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lengzhao/vm/abi"
 )
 
 func TestNewContractCompiler(t *testing.T) {
@@ -182,6 +184,31 @@ func Loop() {
 	}
 	if strings.Count(injectedCode, "__vmConsumeGas") < 3 {
 		t.Fatalf("Expected consume points in functions and loop, got code:\n%s", injectedCode)
+	}
+}
+
+func TestGenerateEntryUsesContractAPIGas(t *testing.T) {
+	compiler := NewContractCompiler().(*ContractCompilerImpl)
+	entry, err := compiler.generateEntryFile(&abi.ABI{})
+	if err != nil {
+		t.Fatalf("generateEntryFile: %v", err)
+	}
+	for _, want := range []string{
+		"contractapi.InitGas",
+		"contractapi.ConsumeGas",
+		"contractapi.GasUsed()",
+		"contractapi.ResetGas()",
+		"contractapi.GasEntryBase",
+	} {
+		if !strings.Contains(entry, want) {
+			t.Fatalf("entry missing %q, got:\n%s", want, entry)
+		}
+	}
+	if strings.Contains(entry, "__vmGasConsumed +=") {
+		t.Fatal("entry should not maintain local __vmGasConsumed counter")
+	}
+	if strings.Contains(entry, "var __vmGasConsumed") || strings.Contains(entry, "var __vmGasLimit") {
+		t.Fatal("entry should not declare local __vmGasConsumed/__vmGasLimit")
 	}
 }
 
