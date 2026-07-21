@@ -40,26 +40,31 @@ func DrainEvents() []Event {
 
 // BlockHeight 返回当前区块高度。
 func BlockHeight() uint64 {
+	ConsumeGas(GasBlockHeight)
 	return envUint64("VM_BLOCK_HEIGHT")
 }
 
 // BlockTime 返回当前区块时间戳。
 func BlockTime() uint64 {
+	ConsumeGas(GasBlockTime)
 	return envUint64("VM_BLOCK_TIME")
 }
 
 // Sender 返回交易发送方。
 func Sender() string {
+	ConsumeGas(GasSender)
 	return os.Getenv("VM_SENDER")
 }
 
 // ContractAddress 返回当前合约地址。
 func ContractAddress() string {
+	ConsumeGas(GasContractAddr)
 	return os.Getenv("VM_CONTRACT_ADDRESS")
 }
 
 // Log 记录事件（键值成对传入）。
 func Log(eventName string, keyValues ...any) {
+	ConsumeGas(GasLog)
 	fields := make(map[string]any)
 	for i := 0; i+1 < len(keyValues); i += 2 {
 		key, ok := keyValues[i].(string)
