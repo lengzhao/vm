@@ -7,6 +7,7 @@ import (
 
 func TestContextAndLog(t *testing.T) {
 	Reset()
+	ResetGas()
 	t.Setenv("VM_BLOCK_HEIGHT", "42")
 	t.Setenv("VM_BLOCK_TIME", "1700000000")
 	t.Setenv("VM_SENDER", "alice")

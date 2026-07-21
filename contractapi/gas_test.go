@@ -8,6 +8,7 @@ import (
 
 func TestConsumeGasAndLimit(t *testing.T) {
 	contractapi.ResetGas()
+	defer contractapi.ResetGas()
 	contractapi.InitGas(5)
 	contractapi.ConsumeGas(3)
 	if contractapi.GasUsed() != 3 {
