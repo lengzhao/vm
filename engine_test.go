@@ -549,6 +549,59 @@ func GetUserDetails(id int) (string, int, bool) {
 	}
 }
 
+func TestExecuteWithHostContext(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewVMEngine(VMConfig{
+		MaxGasLimit:          1000000,
+		EnableSecurityChecks: true,
+		EnableGasMetering:    true,
+		ExecutionTimeout:     time.Second * 30,
+		ContractStorageDir:   dir,
+	})
+
+	source := `
+package main
+
+import "github.com/lengzhao/vm/contractapi"
+
+func Info() (uint64, string, string) {
+	contractapi.Log("InfoCalled", "sender", contractapi.Sender())
+	return contractapi.BlockHeight(), contractapi.Sender(), contractapi.ContractAddress()
+}
+`
+	compiled, err := engine.Compile(source)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	address, err := engine.Deploy(compiled)
+	if err != nil {
+		t.Fatalf("deploy failed: %v", err)
+	}
+
+	host := &MemoryHost{
+		Height:   100,
+		Time:     1700000001,
+		From:     "alice",
+		Contract: Address(address),
+	}
+	result, err := engine.ExecuteWithContext(address, "Info", &CallContext{Host: host})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !strings.Contains(string(result.Data), "100") || !strings.Contains(string(result.Data), "alice") {
+		t.Fatalf("unexpected data: %s", string(result.Data))
+	}
+	if len(result.Events) != 1 || result.Events[0].Name != "InfoCalled" {
+		t.Fatalf("unexpected events: %+v", result.Events)
+	}
+	if len(host.Events) != 1 {
+		t.Fatalf("expected host to receive event, got %d", len(host.Events))
+	}
+	if len(engine.GetLastEvents()) != 1 {
+		t.Fatalf("expected last events on engine")
+	}
+}
+
 func abiPlaceholder() *abi.ABI {
 	return &abi.ABI{
 		PackageName: "test",

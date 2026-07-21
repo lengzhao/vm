@@ -35,6 +35,7 @@ docs/
 ```text
 vm/
 ├── engine.go / compiler.go / runner.go / security.go / gas.go / contract.go / host.go
+├── contractapi/   # 合约侧默认库
 ├── abi/
 ├── examples/{basic,gas,complete,advanced,event}/
 └── docs/

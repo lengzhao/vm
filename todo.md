@@ -5,10 +5,9 @@
 
 ## 当前状态分析（MVP）
 - Compile → Deploy → Execute 主链路已打通（`go build` + ProcessRunner）
-- 安全审查（Import / 危险 AST / 包级 var）、ABI、Gas 控制点注入已可用
-- Runner / Engine E2E / ContractManager 真实产物测试已补充
-- 示例位于 `examples/{basic,gas,complete,advanced,event}`
-- **尚未完成**：默认库 Host Runtime、EstimateGas、完整沙箱、合约升级与并行调度
+- 安全审查、ABI、Gas 控制点注入、集成测试已可用
+- Host Runtime MVP 已接入：`contractapi` + `ExecuteWithContext` + 事件回传
+- **尚未完成**：Object 存储、跨合约 Call、EstimateGas、完整沙箱
 
 ## 开发计划
 
@@ -24,9 +23,10 @@
 - [ ] 开发者指南与 API 参考
 
 ### 第五阶段：Host Runtime / 默认库 MVP
-- [ ] 定义 Host / CallContext / Event
-- [ ] 只读链上下文：BlockHeight / BlockTime / Sender / ContractAddress
-- [ ] 事件日志 Log
+- [x] 定义 Host / CallContext / Event
+- [x] 只读链上下文：BlockHeight / BlockTime / Sender / ContractAddress
+- [x] 事件日志 Log（contractapi + JSON events）
+- [x] ExecuteWithContext / GetLastEvents
 - [ ] Object 存储与跨合约 Call 后置
 
 ### 第六阶段：Gas 模型推进

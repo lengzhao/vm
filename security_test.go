@@ -32,7 +32,7 @@ func TestIsKeywordAllowed(t *testing.T) {
 func TestIsImportAllowed(t *testing.T) {
 	reviewer := NewSecurityReviewer()
 
-	allowedImports := []string{"fmt", "strconv", "math", "time", "errors", "github.com/lengzhao/vm"}
+	allowedImports := []string{"fmt", "strconv", "math", "time", "errors", "github.com/lengzhao/vm", "github.com/lengzhao/vm/contractapi"}
 	for _, imp := range allowedImports {
 		if !reviewer.IsImportAllowed(imp) {
 			t.Errorf("Expected import '%s' to be allowed", imp)

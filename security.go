@@ -55,6 +55,7 @@ func NewSecurityReviewer() SecurityReviewer {
 		"time",
 		"errors",
 		"github.com/lengzhao/vm",
+		"github.com/lengzhao/vm/contractapi",
 	}
 
 	for _, imp := range allowedImports {

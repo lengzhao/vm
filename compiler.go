@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -138,6 +139,8 @@ import (
 	"io"
 	"os"
 	"strconv"
+
+	"github.com/lengzhao/vm/contractapi"
 )
 
 var __vmGasConsumed uint64
@@ -156,14 +159,16 @@ type __vmCallRequest struct {
 }
 
 type __vmCallResponse struct {
-	OK     bool        ` + "`json:\"ok\"`" + `
-	Result interface{} ` + "`json:\"result,omitempty\"`" + `
-	Error  string      ` + "`json:\"error,omitempty\"`" + `
-	Gas    uint64      ` + "`json:\"gas\"`" + `
+	OK     bool               ` + "`json:\"ok\"`" + `
+	Result interface{}        ` + "`json:\"result,omitempty\"`" + `
+	Error  string             ` + "`json:\"error,omitempty\"`" + `
+	Gas    uint64             ` + "`json:\"gas\"`" + `
+	Events []contractapi.Event ` + "`json:\"events,omitempty\"`" + `
 }
 
 func __vmWriteResponse(resp __vmCallResponse) {
 	resp.Gas = __vmGasConsumed
+	resp.Events = contractapi.DrainEvents()
 	enc := json.NewEncoder(os.Stdout)
 	_ = enc.Encode(resp)
 }
@@ -223,6 +228,8 @@ func __vmParseBool(raw json.RawMessage) (bool, error) {
 }
 
 func main() {
+	contractapi.Reset()
+
 	if limit := os.Getenv("VM_GAS_LIMIT"); limit != "" {
 		if v, err := strconv.ParseUint(limit, 10, 64); err == nil {
 			__vmGasLimit = v
@@ -381,8 +388,23 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 	if err := os.WriteFile(entryPath, []byte(entryCode), 0644); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(modPath, []byte("module contract_"+hash+"\n\ngo 1.22\n"), 0644); err != nil {
+
+	moduleRoot, err := findModuleRoot()
+	if err != nil {
+		return "", fmt.Errorf("resolve module root: %w", err)
+	}
+	modContent := fmt.Sprintf("module contract_%s\n\ngo 1.22\n\nrequire github.com/lengzhao/vm v0.0.0\n\nreplace github.com/lengzhao/vm => %s\n", hash, moduleRoot)
+	if err := os.WriteFile(modPath, []byte(modContent), 0644); err != nil {
 		return "", err
+	}
+
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = buildDir
+	var tidyErr bytes.Buffer
+	tidy.Stderr = &tidyErr
+	tidy.Stdout = &tidyErr
+	if err := tidy.Run(); err != nil {
+		return "", fmt.Errorf("go mod tidy failed: %w: %s", err, strings.TrimSpace(tidyErr.String()))
 	}
 
 	cmd := exec.Command("go", "build", "-o", execPath, ".")
@@ -396,6 +418,25 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 	}
 
 	return execPath, nil
+}
+
+func findModuleRoot() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("resolve caller failed")
+	}
+	dir := filepath.Dir(file)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("go.mod not found from %s", file)
 }
 
 func ensurePackageMain(sourceCode string) (string, error) {

@@ -25,6 +25,7 @@ type VMEngine struct {
 	contractManager  ContractManager
 	compiler         ContractCompiler
 	runner           Runner
+	lastEvents       []Event
 }
 
 // VMConfig represents the configuration for the VM
@@ -34,6 +35,13 @@ type VMConfig struct {
 	EnableGasMetering    bool
 	ExecutionTimeout     time.Duration
 	ContractStorageDir   string
+}
+
+// ExecuteResult 是带事件的执行结果
+type ExecuteResult struct {
+	Data        []byte
+	Events      []Event
+	GasConsumed uint64
 }
 
 // ABIGenerator ABI生成模块接口
@@ -132,6 +140,17 @@ func (vm *VMEngine) Deploy(contract *CompiledContract) (string, error) {
 
 // Execute executes a function on the deployed contract
 func (vm *VMEngine) Execute(contractAddress, function string, args ...interface{}) ([]byte, error) {
+	result, err := vm.ExecuteWithContext(contractAddress, function, nil, args...)
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
+// ExecuteWithContext 在指定 Host 调用上下文中执行合约函数
+func (vm *VMEngine) ExecuteWithContext(contractAddress, function string, callCtx *CallContext, args ...interface{}) (*ExecuteResult, error) {
+	vm.lastEvents = nil
+
 	if contractAddress == "" {
 		return nil, fmt.Errorf("contract address cannot be empty")
 	}
@@ -151,6 +170,16 @@ func (vm *VMEngine) Execute(contractAddress, function string, args ...interface{
 		return nil, fmt.Errorf("failed to load contract: %w", err)
 	}
 
+	if callCtx == nil {
+		callCtx = &CallContext{}
+	}
+	if callCtx.ContractAddress == "" {
+		callCtx.ContractAddress = Address(contractAddress)
+	}
+	if callCtx.GasLimit == 0 && vm.config.EnableGasMetering && vm.config.MaxGasLimit > 0 {
+		callCtx.GasLimit = vm.config.MaxGasLimit
+	}
+
 	ctx := context.Background()
 	if vm.config.ExecutionTimeout > 0 {
 		var cancel context.CancelFunc
@@ -160,19 +189,24 @@ func (vm *VMEngine) Execute(contractAddress, function string, args ...interface{
 	if vm.config.EnableGasMetering && vm.config.MaxGasLimit > 0 {
 		ctx = WithGasLimit(ctx, vm.config.MaxGasLimit)
 	}
+	ctx = WithCallContext(ctx, callCtx)
 
 	result, err := vm.runner.Run(ctx, contract, CallRequest{
 		Function: function,
 		Args:     args,
 	})
-	if result != nil && vm.config.EnableGasMetering {
-		consumed := result.GasConsumed
-		if consumed == 0 {
-			consumed = defaultEntryGas
-		}
-		if consumeErr := vm.gasMetering.ConsumeGas(consumed); consumeErr != nil {
-			if err == nil {
-				err = consumeErr
+	if result != nil {
+		vm.lastEvents = result.Events
+		applyEventsToHost(callCtx.Host, result.Events)
+		if vm.config.EnableGasMetering {
+			consumed := result.GasConsumed
+			if consumed == 0 {
+				consumed = defaultEntryGas
+			}
+			if consumeErr := vm.gasMetering.ConsumeGas(consumed); consumeErr != nil {
+				if err == nil {
+					err = consumeErr
+				}
 			}
 		}
 	}
@@ -180,7 +214,29 @@ func (vm *VMEngine) Execute(contractAddress, function string, args ...interface{
 		return nil, err
 	}
 
-	return result.Data, nil
+	return &ExecuteResult{
+		Data:        result.Data,
+		Events:      result.Events,
+		GasConsumed: result.GasConsumed,
+	}, nil
+}
+
+func applyEventsToHost(host Host, events []Event) {
+	if host == nil {
+		return
+	}
+	for _, event := range events {
+		kvs := make([]any, 0, len(event.Fields)*2)
+		for k, v := range event.Fields {
+			kvs = append(kvs, k, v)
+		}
+		host.Log(event.Name, kvs...)
+	}
+}
+
+// GetLastEvents 返回最近一次执行产生的事件
+func (vm *VMEngine) GetLastEvents() []Event {
+	return vm.lastEvents
 }
 
 // GetContract 获取合约

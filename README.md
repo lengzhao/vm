@@ -22,6 +22,7 @@
 4. **Runner**：进程超时执行合约产物，JSON 请求/响应
 5. **Gas计费模块**：宿主计量 + 编译期函数/循环消耗点
 6. **合约管理模块**：部署、存储和查询合约产物
+7. **Host Runtime / contractapi**：只读链上下文与事件日志（MVP）
 
 ### 安全机制
 - 关键字白名单机制：限制危险关键字的使用
@@ -35,6 +36,8 @@
 - `GenerateABI(sourceCode string) (*abi.ABI, error)`：生成合约ABI
 - `Deploy(contract *CompiledContract) (string, error)`：部署合约
 - `Execute(contractAddress, function string, args ...interface{}) ([]byte, error)`：执行合约函数
+- `ExecuteWithContext(..., callCtx *CallContext, ...) (*ExecuteResult, error)`：带 Host 上下文执行
+- `GetLastEvents() []Event`：获取最近一次执行事件
 - `GetContract(address string) (*CompiledContract, error)`：获取合约信息
 - `GetContractABI(address string) (*abi.ABI, error)`：获取合约ABI
 

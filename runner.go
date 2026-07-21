@@ -21,6 +21,7 @@ type CallResult struct {
 	Data        []byte
 	RawResult   interface{}
 	GasConsumed uint64
+	Events      []Event
 	Stdout      string
 	Stderr      string
 }
@@ -48,6 +49,7 @@ type processResponse struct {
 	Result interface{} `json:"result"`
 	Error  string      `json:"error"`
 	Gas    uint64      `json:"gas"`
+	Events []Event     `json:"events"`
 }
 
 // Run 执行合约函数
@@ -86,12 +88,7 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *CompiledContract, req
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
-	if limit, ok := gasLimitFromContext(ctx); ok {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("VM_GAS_LIMIT=%d", limit))
-	} else {
-		cmd.Env = os.Environ()
-	}
+	cmd.Env = buildContractEnv(ctx)
 
 	runErr := cmd.Run()
 	result := &CallResult{
@@ -109,6 +106,7 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *CompiledContract, req
 
 	result.GasConsumed = resp.Gas
 	result.RawResult = resp.Result
+	result.Events = resp.Events
 
 	if !resp.OK {
 		errMsg := resp.Error
@@ -138,7 +136,54 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *CompiledContract, req
 	return result, nil
 }
 
+func buildContractEnv(ctx context.Context) []string {
+	env := append([]string{}, os.Environ()...)
+	var gasLimit uint64
+	var hasGas bool
+	if limit, ok := gasLimitFromContext(ctx); ok {
+		gasLimit = limit
+		hasGas = true
+	}
+	if callCtx, ok := CallContextFrom(ctx); ok && callCtx != nil {
+		cc := normalizeCallContext(callCtx)
+		env = append(env,
+			fmt.Sprintf("VM_BLOCK_HEIGHT=%d", cc.BlockHeight),
+			fmt.Sprintf("VM_BLOCK_TIME=%d", cc.BlockTime),
+			"VM_SENDER="+string(cc.Sender),
+			"VM_CONTRACT_ADDRESS="+string(cc.ContractAddress),
+		)
+		if cc.GasLimit > 0 {
+			gasLimit = cc.GasLimit
+			hasGas = true
+		}
+	}
+	if hasGas {
+		env = append(env, fmt.Sprintf("VM_GAS_LIMIT=%d", gasLimit))
+	}
+	return env
+}
+
+func normalizeCallContext(cc *CallContext) CallContext {
+	out := *cc
+	if out.Host != nil {
+		if out.BlockHeight == 0 {
+			out.BlockHeight = out.Host.BlockHeight()
+		}
+		if out.BlockTime == 0 {
+			out.BlockTime = out.Host.BlockTime()
+		}
+		if out.Sender == "" {
+			out.Sender = out.Host.Sender()
+		}
+		if out.ContractAddress == "" {
+			out.ContractAddress = out.Host.ContractAddress()
+		}
+	}
+	return out
+}
+
 type gasLimitKey struct{}
+type callContextKey struct{}
 
 // WithGasLimit 将 Gas 限制放入 context，供 Runner 传给子进程
 func WithGasLimit(ctx context.Context, limit uint64) context.Context {
@@ -152,4 +197,19 @@ func gasLimitFromContext(ctx context.Context) (uint64, bool) {
 	}
 	limit, ok := v.(uint64)
 	return limit, ok
+}
+
+// WithCallContext 将调用上下文放入 context
+func WithCallContext(ctx context.Context, callCtx *CallContext) context.Context {
+	return context.WithValue(ctx, callContextKey{}, callCtx)
+}
+
+// CallContextFrom 从 context 取出 CallContext
+func CallContextFrom(ctx context.Context) (*CallContext, bool) {
+	v := ctx.Value(callContextKey{})
+	if v == nil {
+		return nil, false
+	}
+	cc, ok := v.(*CallContext)
+	return cc, ok
 }
