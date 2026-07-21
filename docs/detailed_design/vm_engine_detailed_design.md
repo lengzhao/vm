@@ -15,6 +15,8 @@ type VMEngine struct {
     contractManager  ContractManager
     compiler         ContractCompiler
     runner           Runner
+    lastEvents       []Event // 兼容 GetLastEvents；以 ExecuteResult 为准
+    mu               sync.Mutex
 }
 ```
 
@@ -26,10 +28,11 @@ flowchart TD
     A[Compile source] --> B[ContractCompiler.Compile]
     B --> C[Validate]
     C --> D[Generate ABI]
-    D --> E[InjectGas]
-    E --> F[Generate entry]
+    D --> E{缓存命中?}
+    E -->|是| H[CompiledContract]
+    E -->|否| F[InjectGas + entry + embed contractapi]
     F --> G[go build]
-    G --> H[CompiledContract]
+    G --> H
 ```
 
 ### 3.2 Deploy
@@ -37,15 +40,18 @@ flowchart TD
 2. 委托 `ContractManager.Deploy`
 3. 返回合约地址，并更新 `CompiledContract.Address`
 
-### 3.3 Execute
+### 3.3 Execute / ExecuteWithContext
 ```mermaid
 flowchart TD
-    A[Execute] --> B[Reset Gas]
+    A[ExecuteWithContext] --> B[Reset Gas]
     B --> C[LoadContract]
-    C --> D[Runner.Run]
-    D --> E[同步 GasConsumed]
-    E --> F[返回结果字节]
+    C --> D[注入 CallContext 到 ctx]
+    D --> E[Runner.Run 最小 VM_* env]
+    E --> F[ExecuteResult: Data/Events/Gas]
+    F --> G[同步 Gas / lastEvents]
 ```
+
+事件以 `ExecuteResult` 自包含返回，不回放到 `Host.Log`。
 
 ## 4. 配置
 
@@ -67,4 +73,4 @@ type VMConfig struct {
 ## 6. 非目标（本阶段）
 - EstimateGas 精确估算
 - 合约升级
-- Host Runtime 链状态读写
+- Object / 跨合约 Call / 完整链状态读写

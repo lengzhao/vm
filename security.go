@@ -54,7 +54,6 @@ func NewSecurityReviewer() SecurityReviewer {
 		"math",
 		"time",
 		"errors",
-		"github.com/lengzhao/vm",
 		"github.com/lengzhao/vm/contractapi",
 	}
 

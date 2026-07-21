@@ -20,13 +20,14 @@ type Host interface {
 }
 
 // CallContext 描述单次合约调用的宿主上下文。
+// 指针字段用于区分“未设置”与零值（例如 BlockHeight=0）。
 type CallContext struct {
 	Host            Host
-	GasLimit        uint64
-	Sender          Address
-	ContractAddress Address
-	BlockHeight     uint64
-	BlockTime       uint64
+	GasLimit        *uint64
+	Sender          *Address
+	ContractAddress *Address
+	BlockHeight     *uint64
+	BlockTime       *uint64
 }
 
 // MemoryHost 是用于测试与本地演示的内存版 Host。
@@ -56,3 +57,9 @@ func (h *MemoryHost) Log(eventName string, keyValues ...any) {
 	}
 	h.Events = append(h.Events, Event{Name: eventName, Fields: fields})
 }
+
+// Uint64Ptr 返回 uint64 指针，便于构造 CallContext。
+func Uint64Ptr(v uint64) *uint64 { return &v }
+
+// AddressPtr 返回 Address 指针，便于构造 CallContext。
+func AddressPtr(v Address) *Address { return &v }

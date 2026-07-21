@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -84,6 +83,18 @@ func (c *ContractCompilerImpl) Compile(sourceCode string) (*CompiledContract, er
 		return nil, fmt.Errorf("failed to generate ABI: %w", err)
 	}
 
+	hash := generateBuildHash(sourceCode)
+	execPath := filepath.Join(c.outputDir, "contract_"+hash)
+	if cached, ok := loadCachedExecutable(execPath); ok {
+		return &CompiledContract{
+			ExecutablePath: cached,
+			ABI:            contractABI,
+			CompileTime:    time.Now(),
+			SourceHash:     hash,
+			Address:        "",
+		}, nil
+	}
+
 	gasInjectedCode, err := c.InjectGas(sourceCode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inject gas: %w", err)
@@ -98,14 +109,13 @@ func (c *ContractCompilerImpl) Compile(sourceCode string) (*CompiledContract, er
 		return nil, fmt.Errorf("failed to generate entry: %w", err)
 	}
 
-	hash := generateHash(sourceCode)
-	execPath, err := c.buildExecutable(hash, gasInjectedCode, entryCode)
+	builtPath, err := c.buildExecutable(hash, gasInjectedCode, entryCode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build contract: %w", err)
 	}
 
 	return &CompiledContract{
-		ExecutablePath: execPath,
+		ExecutablePath: builtPath,
 		ABI:            contractABI,
 		CompileTime:    time.Now(),
 		SourceHash:     hash,
@@ -364,11 +374,16 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 		return "", err
 	}
 
+	execPath := filepath.Join(c.outputDir, "contract_"+hash)
+	if cached, ok := loadCachedExecutable(execPath); ok {
+		return cached, nil
+	}
+
 	buildDir := filepath.Join(c.outputDir, "build_"+hash)
 	if err := os.RemoveAll(buildDir); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(buildDir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(buildDir, "contractapi"), 0755); err != nil {
 		return "", err
 	}
 
@@ -379,8 +394,9 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 
 	contractPath := filepath.Join(buildDir, "contract.go")
 	entryPath := filepath.Join(buildDir, "entry.go")
+	apiPath := filepath.Join(buildDir, "contractapi", "contractapi.go")
+	apiModPath := filepath.Join(buildDir, "contractapi", "go.mod")
 	modPath := filepath.Join(buildDir, "go.mod")
-	execPath := filepath.Join(c.outputDir, "contract_"+hash)
 
 	if err := os.WriteFile(contractPath, []byte(normalized), 0644); err != nil {
 		return "", err
@@ -388,27 +404,28 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 	if err := os.WriteFile(entryPath, []byte(entryCode), 0644); err != nil {
 		return "", err
 	}
-
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return "", fmt.Errorf("resolve module root: %w", err)
+	if err := os.WriteFile(apiPath, []byte(embeddedContractAPISource), 0644); err != nil {
+		return "", err
 	}
-	modContent := fmt.Sprintf("module contract_%s\n\ngo 1.22\n\nrequire github.com/lengzhao/vm v0.0.0\n\nreplace github.com/lengzhao/vm => %s\n", hash, moduleRoot)
+	if err := os.WriteFile(apiModPath, []byte("module github.com/lengzhao/vm/contractapi\n\ngo 1.22\n"), 0644); err != nil {
+		return "", err
+	}
+
+	modContent := fmt.Sprintf(`module contract_%s
+
+go 1.22
+
+require github.com/lengzhao/vm/contractapi v0.0.0
+
+replace github.com/lengzhao/vm/contractapi => ./contractapi
+`, hash)
 	if err := os.WriteFile(modPath, []byte(modContent), 0644); err != nil {
 		return "", err
 	}
 
-	tidy := exec.Command("go", "mod", "tidy")
-	tidy.Dir = buildDir
-	var tidyErr bytes.Buffer
-	tidy.Stderr = &tidyErr
-	tidy.Stdout = &tidyErr
-	if err := tidy.Run(); err != nil {
-		return "", fmt.Errorf("go mod tidy failed: %w: %s", err, strings.TrimSpace(tidyErr.String()))
-	}
-
-	cmd := exec.Command("go", "build", "-o", execPath, ".")
+	cmd := exec.Command("go", "build", "-mod=mod", "-o", execPath, ".")
 	cmd.Dir = buildDir
+	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stderr
@@ -420,23 +437,25 @@ func (c *ContractCompilerImpl) buildExecutable(hash, contractCode, entryCode str
 	return execPath, nil
 }
 
-func findModuleRoot() (string, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("resolve caller failed")
+func loadCachedExecutable(execPath string) (string, bool) {
+	info, err := os.Stat(execPath)
+	if err != nil || info.IsDir() {
+		return "", false
 	}
-	dir := filepath.Dir(file)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	if info.Mode()&0o111 == 0 {
+		return "", false
 	}
-	return "", fmt.Errorf("go.mod not found from %s", file)
+	return execPath, true
+}
+
+func generateBuildHash(sourceCode string) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(compilerBuildID))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(embeddedContractAPISource))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(sourceCode))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func ensurePackageMain(sourceCode string) (string, error) {
@@ -513,9 +532,4 @@ func consumeGasStmt(amount uint64) ast.Stmt {
 			},
 		},
 	}
-}
-
-func generateHash(sourceCode string) string {
-	hash := sha256.Sum256([]byte(sourceCode))
-	return hex.EncodeToString(hash[:])[:16]
 }

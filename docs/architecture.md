@@ -43,7 +43,7 @@ flowchart TD
 ### 2.3 当前阶段后置能力
 以下能力保留设计方向，但不作为当前主链路阻塞项：
 - 完整系统调用沙箱 / Docker 隔离
-- 默认库 Host Runtime 与链状态实现
+- Object 存储、跨合约 Call、完整链状态读写
 - 合约升级、并行调度框架
 - TinyGo 作为默认构建器（当前默认 `go build`，可后续切换）
 
@@ -52,7 +52,8 @@ flowchart TD
 ### 3.1 导入控制
 合约只能导入白名单包：
 - `fmt`、`strconv`、`math`、`time`、`errors`
-- `github.com/lengzhao/vm`（默认库，后续拆分合约侧 SDK）
+- `github.com/lengzhao/vm/contractapi`（合约侧默认库）
+- **禁止** `github.com/lengzhao/vm`（宿主根包）
 
 ### 3.2 危险构造禁止
 通过 AST 拒绝：
@@ -66,7 +67,12 @@ flowchart TD
 
 ### 3.4 执行隔离（MVP）
 - 使用独立进程 + 超时执行
+- 子进程仅注入最小环境（`PATH` + `VM_*`），不继承完整宿主环境
 - 复杂沙箱后置
+
+### 3.5 编译缓存
+- 产物路径按源码指纹 + `compilerBuildID` 命名；命中则跳过 `go build`
+- 构建时内嵌 `contractapi` 源码（`//go:embed`），本地 `replace`，无需每次 `go mod tidy`
 
 ## 4. 模块与目录
 
@@ -74,14 +80,17 @@ flowchart TD
 
 ```text
 vm/
-├── engine.go      # VMEngine 编排入口
-├── compiler.go    # 编译流水线
-├── runner.go      # ProcessRunner
-├── security.go    # 安全审查
-├── gas.go         # Gas 计量
-├── contract.go    # 合约存储管理
-├── abi/           # ABI 提取
-└── docs/          # 设计文档
+├── engine.go           # VMEngine 编排入口
+├── compiler.go         # 编译流水线（含缓存）
+├── compiler_embed.go   # 内嵌 contractapi
+├── runner.go           # ProcessRunner
+├── host.go             # Host / CallContext / Event
+├── security.go         # 安全审查
+├── gas.go              # Gas 计量
+├── contract.go         # 合约存储管理
+├── contractapi/        # 合约侧默认库
+├── abi/                # ABI 提取
+└── docs/               # 设计文档
 ```
 
 ## 5. 执行与数据交互

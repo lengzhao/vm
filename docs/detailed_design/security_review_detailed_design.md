@@ -218,7 +218,7 @@ strconv      # 字符串转换
 math         # 数学计算
 time         # 时间处理
 errors       # 错误处理
-github.com/lengzhao/vm  # 项目默认库
+github.com/lengzhao/vm/contractapi  # 合约侧默认库（禁止宿主根包）
 ```
 
 ## 6. 黑名单机制设计
@@ -343,7 +343,7 @@ security:
     - "math"
     - "time"
     - "errors"
-    - "github.com/lengzhao/vm"
+    - "github.com/lengzhao/vm/contractapi"
 ```
 
 ## 12. 与其他模块的交互
@@ -399,7 +399,8 @@ var defaultImportWhitelist = map[string]bool{
     "math": true,
     "time": true,
     "errors": true,
-    "github.com/lengzhao/vm": true,
+    "github.com/lengzhao/vm/contractapi": true,
+    // 禁止：github.com/lengzhao/vm（宿主根包）
 }
 ```
 

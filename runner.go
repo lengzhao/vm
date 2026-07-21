@@ -137,7 +137,12 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *CompiledContract, req
 }
 
 func buildContractEnv(ctx context.Context) []string {
-	env := append([]string{}, os.Environ()...)
+	// 不继承宿主完整环境，降低信息泄漏面
+	env := make([]string, 0, 8)
+	if path := os.Getenv("PATH"); path != "" {
+		env = append(env, "PATH="+path)
+	}
+
 	var gasLimit uint64
 	var hasGas bool
 	if limit, ok := gasLimitFromContext(ctx); ok {
@@ -145,15 +150,21 @@ func buildContractEnv(ctx context.Context) []string {
 		hasGas = true
 	}
 	if callCtx, ok := CallContextFrom(ctx); ok && callCtx != nil {
-		cc := normalizeCallContext(callCtx)
-		env = append(env,
-			fmt.Sprintf("VM_BLOCK_HEIGHT=%d", cc.BlockHeight),
-			fmt.Sprintf("VM_BLOCK_TIME=%d", cc.BlockTime),
-			"VM_SENDER="+string(cc.Sender),
-			"VM_CONTRACT_ADDRESS="+string(cc.ContractAddress),
-		)
-		if cc.GasLimit > 0 {
-			gasLimit = cc.GasLimit
+		resolved := resolveCallContext(callCtx)
+		if resolved.blockHeightSet {
+			env = append(env, fmt.Sprintf("VM_BLOCK_HEIGHT=%d", resolved.blockHeight))
+		}
+		if resolved.blockTimeSet {
+			env = append(env, fmt.Sprintf("VM_BLOCK_TIME=%d", resolved.blockTime))
+		}
+		if resolved.senderSet {
+			env = append(env, "VM_SENDER="+string(resolved.sender))
+		}
+		if resolved.contractSet {
+			env = append(env, "VM_CONTRACT_ADDRESS="+string(resolved.contract))
+		}
+		if resolved.gasLimitSet {
+			gasLimit = resolved.gasLimit
 			hasGas = true
 		}
 	}
@@ -163,21 +174,52 @@ func buildContractEnv(ctx context.Context) []string {
 	return env
 }
 
-func normalizeCallContext(cc *CallContext) CallContext {
-	out := *cc
-	if out.Host != nil {
-		if out.BlockHeight == 0 {
-			out.BlockHeight = out.Host.BlockHeight()
-		}
-		if out.BlockTime == 0 {
-			out.BlockTime = out.Host.BlockTime()
-		}
-		if out.Sender == "" {
-			out.Sender = out.Host.Sender()
-		}
-		if out.ContractAddress == "" {
-			out.ContractAddress = out.Host.ContractAddress()
-		}
+type resolvedCallContext struct {
+	blockHeight    uint64
+	blockTime      uint64
+	sender         Address
+	contract       Address
+	gasLimit       uint64
+	blockHeightSet bool
+	blockTimeSet   bool
+	senderSet      bool
+	contractSet    bool
+	gasLimitSet    bool
+}
+
+func resolveCallContext(cc *CallContext) resolvedCallContext {
+	var out resolvedCallContext
+	if cc.BlockHeight != nil {
+		out.blockHeight = *cc.BlockHeight
+		out.blockHeightSet = true
+	} else if cc.Host != nil {
+		out.blockHeight = cc.Host.BlockHeight()
+		out.blockHeightSet = true
+	}
+	if cc.BlockTime != nil {
+		out.blockTime = *cc.BlockTime
+		out.blockTimeSet = true
+	} else if cc.Host != nil {
+		out.blockTime = cc.Host.BlockTime()
+		out.blockTimeSet = true
+	}
+	if cc.Sender != nil {
+		out.sender = *cc.Sender
+		out.senderSet = true
+	} else if cc.Host != nil {
+		out.sender = cc.Host.Sender()
+		out.senderSet = true
+	}
+	if cc.ContractAddress != nil {
+		out.contract = *cc.ContractAddress
+		out.contractSet = true
+	} else if cc.Host != nil {
+		out.contract = cc.Host.ContractAddress()
+		out.contractSet = true
+	}
+	if cc.GasLimit != nil {
+		out.gasLimit = *cc.GasLimit
+		out.gasLimitSet = true
 	}
 	return out
 }

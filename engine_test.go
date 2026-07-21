@@ -579,7 +579,7 @@ func Info() (uint64, string, string) {
 	}
 
 	host := &MemoryHost{
-		Height:   100,
+		Height:   0, // 零值也应注入
 		Time:     1700000001,
 		From:     "alice",
 		Contract: Address(address),
@@ -588,17 +588,50 @@ func Info() (uint64, string, string) {
 	if err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-	if !strings.Contains(string(result.Data), "100") || !strings.Contains(string(result.Data), "alice") {
+	if !strings.Contains(string(result.Data), "0") || !strings.Contains(string(result.Data), "alice") {
 		t.Fatalf("unexpected data: %s", string(result.Data))
 	}
 	if len(result.Events) != 1 || result.Events[0].Name != "InfoCalled" {
 		t.Fatalf("unexpected events: %+v", result.Events)
 	}
-	if len(host.Events) != 1 {
-		t.Fatalf("expected host to receive event, got %d", len(host.Events))
+	// 事件以 ExecuteResult 为准，不再回放到 Host.Log，避免重复
+	if len(host.Events) != 0 {
+		t.Fatalf("expected no host.Log replay, got %d", len(host.Events))
 	}
 	if len(engine.GetLastEvents()) != 1 {
 		t.Fatalf("expected last events on engine")
+	}
+}
+
+func TestCompileUsesCache(t *testing.T) {
+	dir := t.TempDir()
+	compiler := NewContractCompilerWithOptions(dir, true)
+	source := `
+package main
+func Add(a, b int) int { return a + b }
+`
+	first, err := compiler.Compile(source)
+	if err != nil {
+		t.Fatalf("first compile: %v", err)
+	}
+	info1, err := os.Stat(first.ExecutablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := compiler.Compile(source)
+	if err != nil {
+		t.Fatalf("second compile: %v", err)
+	}
+	if first.ExecutablePath != second.ExecutablePath {
+		t.Fatalf("expected cached path, got %s vs %s", first.ExecutablePath, second.ExecutablePath)
+	}
+	info2, err := os.Stat(second.ExecutablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info1.ModTime().Equal(info2.ModTime()) {
+		t.Fatal("expected executable mtime unchanged on cache hit")
 	}
 }
 

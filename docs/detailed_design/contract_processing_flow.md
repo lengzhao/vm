@@ -40,13 +40,14 @@ flowchart TD
 - 输出 JSON 结果和 Gas
 - 读取 `VM_GAS_LIMIT`
 
-### 3.5 构建
-在临时构建目录写入：
-- `contract.go`（Gas 注入后源码，包名规范为 `main`）
-- `entry.go`
-- `go.mod`
-
-然后执行 `go build -o <exec>`。
+### 3.5 构建与缓存
+1. 源码指纹含 `compilerBuildID`；若 `contract_<hash>` 已存在则跳过构建
+2. 临时构建目录写入：
+   - `contract.go`（Gas 注入后源码，包名规范为 `main`）
+   - `entry.go`
+   - `contractapi/`（由 `//go:embed` 展开的合约侧 SDK + 本地 `go.mod`）
+   - `go.mod`（`replace github.com/lengzhao/vm/contractapi => ./contractapi`）
+3. 执行 `go build -mod=mod -o <exec>`（无需每次 `go mod tidy`）
 
 ### 3.6 部署存储
 `ContractManager` 将可执行文件、`abi.json`、`metadata.json` 存入：
@@ -59,10 +60,10 @@ contracts/{address}/
 ```
 
 ### 3.7 执行
-1. `VMEngine.Execute` 加载合约
-2. `ProcessRunner` 以超时上下文启动二进制
+1. `VMEngine.Execute` / `ExecuteWithContext` 加载合约
+2. `ProcessRunner` 以超时上下文启动二进制，注入最小 `VM_*` 环境
 3. stdin 写入 `{"function":"...","args":[...]}`
-4. 解析 stdout JSON，回写宿主 `GasMetering`
+4. 解析 stdout JSON（含 `events`），回写宿主 `GasMetering`；结果以 `ExecuteResult` 为准
 
 ## 4. 错误处理
 任一阶段失败即中止：
@@ -73,5 +74,5 @@ contracts/{address}/
 
 ## 5. 当前限制
 - 参数类型支持：`int` / `int64` / `uint64` / `float64` / `string` / `bool`
-- 默认库 Host 回调尚未接入
+- Object / 跨合约 Call 后置
 - 复杂沙箱后置

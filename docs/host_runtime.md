@@ -14,6 +14,8 @@ vm/
 └── contractapi/         # 合约侧默认库
 ```
 
+合约只能 import `github.com/lengzhao/vm/contractapi`，禁止 import 宿主根包 `github.com/lengzhao/vm`。
+
 ## 3. 已实现接口
 
 ### 宿主侧
@@ -25,6 +27,16 @@ type Host interface {
     Sender() Address
     ContractAddress() Address
     Log(eventName string, keyValues ...any)
+}
+
+// 指针字段区分「未设置」与零值（例如 BlockHeight=0）
+type CallContext struct {
+    Host            Host
+    GasLimit        *uint64
+    Sender          *Address
+    ContractAddress *Address
+    BlockHeight     *uint64
+    BlockTime       *uint64
 }
 
 func (vm *VMEngine) ExecuteWithContext(address, function string, callCtx *CallContext, args ...any) (*ExecuteResult, error)
@@ -42,20 +54,19 @@ Log(eventName string, keyValues ...any)
 
 ## 4. 通信方式（当前）
 
-1. Runner 将 `CallContext` 写入环境变量：
-   - `VM_BLOCK_HEIGHT`
-   - `VM_BLOCK_TIME`
-   - `VM_SENDER`
-   - `VM_CONTRACT_ADDRESS`
+1. Runner 将解析后的 `CallContext` 写入**最小环境变量**（不继承完整 `os.Environ()`）：
+   - `PATH`（便于启动子进程）
+   - `VM_BLOCK_HEIGHT` / `VM_BLOCK_TIME` / `VM_SENDER` / `VM_CONTRACT_ADDRESS`（仅在已设置时注入）
    - `VM_GAS_LIMIT`
 2. 合约通过 `contractapi` 读取上下文并 `Log` 事件
 3. entry 在 JSON 响应中附带 `events`
-4. Engine 解析事件，写入 `ExecuteResult` / `GetLastEvents()`，并回放给 `Host.Log`
+4. Engine 将事件写入 `ExecuteResult`；`GetLastEvents()` 仅为兼容保留
+5. **不再**把 events 回放到 `Host.Log`，避免重复记账
 
 ```json
 {
   "ok": true,
-  "result": [100, "alice", "contract_xxx"],
+  "result": [0, "alice", "contract_xxx"],
   "gas": 12,
   "events": [
     {"name": "InfoCalled", "fields": {"sender": "alice"}}
@@ -67,11 +78,11 @@ Log(eventName string, keyValues ...any)
 
 - Object 存储 / Transfer / Call
 - 执行中双向 RPC/IPC
-- 合约侧包与宿主包进一步隔离（禁止 import 宿主根包）
 
 ## 6. 验收
 
 - [x] `Host` 可被 `MemoryHost` 替换
-- [x] `ExecuteWithContext` 可注入 Sender / Height
-- [x] 事件可从执行结果收集
+- [x] `ExecuteWithContext` 可注入 Sender / Height（含零值 Height）
+- [x] 事件以 `ExecuteResult` 自包含返回
+- [x] 禁止合约 import 宿主根包
 - [x] Object / Call 明确后置

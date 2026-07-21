@@ -32,11 +32,16 @@ func TestIsKeywordAllowed(t *testing.T) {
 func TestIsImportAllowed(t *testing.T) {
 	reviewer := NewSecurityReviewer()
 
-	allowedImports := []string{"fmt", "strconv", "math", "time", "errors", "github.com/lengzhao/vm", "github.com/lengzhao/vm/contractapi"}
+	allowedImports := []string{"fmt", "strconv", "math", "time", "errors", "github.com/lengzhao/vm/contractapi"}
 	for _, imp := range allowedImports {
 		if !reviewer.IsImportAllowed(imp) {
 			t.Errorf("Expected import '%s' to be allowed", imp)
 		}
+	}
+
+	// 宿主根包不得被合约导入
+	if reviewer.IsImportAllowed("github.com/lengzhao/vm") {
+		t.Error("Expected host root package import to be disallowed")
 	}
 
 	disallowedImports := []string{"os", "net", "syscall", "unsafe"}
@@ -176,6 +181,21 @@ func Hello() int {
 	}
 	if secErr.ErrorType != GlobalVarNotAllowed {
 		t.Errorf("Expected GlobalVarNotAllowed, got %v", secErr.ErrorType)
+	}
+}
+
+func TestReview_HostRootImportNotAllowed(t *testing.T) {
+	reviewer := NewSecurityReviewer()
+	code := `
+package main
+
+import "github.com/lengzhao/vm"
+
+func Hello() {}
+`
+	err := reviewer.Review(code)
+	if err == nil {
+		t.Fatal("expected host root import to be rejected")
 	}
 }
 

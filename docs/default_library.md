@@ -4,8 +4,8 @@
 
 默认库是合约与区块链环境交互的唯一受控入口。
 
-- **目标态**：合约 import 专用 SDK（建议 `github.com/lengzhao/vm/contractapi`）
-- **当前态**：接口已规范；Host Runtime 实现见 [`host_runtime.md`](host_runtime.md)，代码侧先落地宿主接口
+- **当前态**：合约只能 import `github.com/lengzhao/vm/contractapi`；禁止 import 宿主根包
+- Host Runtime 实现见 [`host_runtime.md`](host_runtime.md)
 
 ## 2. MVP（优先实现）
 

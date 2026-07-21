@@ -7,6 +7,7 @@
 - Compile → Deploy → Execute 主链路已打通（`go build` + ProcessRunner）
 - 安全审查、ABI、Gas 控制点注入、集成测试已可用
 - Host Runtime MVP 已接入：`contractapi` + `ExecuteWithContext` + 事件回传
+- 加固：禁止宿主根包 import、编译缓存 + embed contractapi、最小 env、CallContext 零值语义、结果自包含
 - **尚未完成**：Object 存储、跨合约 Call、EstimateGas、完整沙箱
 
 ## 开发计划
