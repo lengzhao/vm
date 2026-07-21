@@ -10,13 +10,15 @@
 flowchart TD
     A[Go 合约源码] --> B[Import 与 AST 安全审查]
     B --> C[提取 ABI]
-    C --> D[注入 Gas 消耗点]
-    D --> E[生成 entry main]
-    E --> F[go build 产出二进制]
-    F --> G[Deploy 存储产物与元数据]
-    G --> H[Execute 加载合约]
-    H --> I[Runner 子进程调用]
-    I --> J[返回 JSON 结果与 Gas]
+    C --> D[扫描 GasProfile]
+    C --> E[注入 contractapi.ConsumeGas]
+    E --> F[生成 entry main]
+    D --> G[go build 产出二进制]
+    F --> G
+    G --> H[Deploy 存储产物 / abi / gas_profile.json]
+    H --> I[Execute 或 EstimateGas]
+    I --> J[Runner 子进程 / 静态读 Profile]
+    J --> K[返回结果与 Gas]
 ```
 
 ## 3. 详细步骤
@@ -30,14 +32,17 @@ flowchart TD
 ### 3.2 ABI 生成
 基于原始源码提取导出函数签名与事件信息。
 
-### 3.3 Gas 注入（MVP）
-在函数入口和 `for` / `range` 循环体插入 `__vmConsumeGas(n)`。
+### 3.3 Gas 注入与 Profile（已实现）
+- 在函数入口和 `for` / `range` 循环体插入 `contractapi.ConsumeGas(1)`
+- 对原始源码扫描生成 `GasProfile`（函数入口数、循环点数、contractapi 调用）
+- 只读上下文与 `Log` 在 `contractapi` 内按表扣费；Object / Call Gas 后置
 
 ### 3.4 入口生成
 编译器生成独立 `entry.go`：
+- `contractapi.InitGas` + 入口基础 Gas(10)
 - 解析 stdin JSON 请求
 - 按函数名分发调用
-- 输出 JSON 结果和 Gas
+- 输出 JSON 结果和 `gas`（`GasUsed()`）
 - 读取 `VM_GAS_LIMIT`
 
 ### 3.5 构建与缓存
@@ -50,20 +55,22 @@ flowchart TD
 3. 执行 `go build -mod=mod -o <exec>`（无需每次 `go mod tidy`）
 
 ### 3.6 部署存储
-`ContractManager` 将可执行文件、`abi.json`、`metadata.json` 存入：
+`ContractManager` 将可执行文件、`abi.json`、`metadata.json`、`gas_profile.json` 存入：
 
 ```text
 contracts/{address}/
   ├── contract_<hash>
   ├── abi.json
-  └── metadata.json
+  ├── metadata.json
+  └── gas_profile.json
 ```
 
-### 3.7 执行
+### 3.7 执行与估算
 1. `VMEngine.Execute` / `ExecuteWithContext` 加载合约
 2. `ProcessRunner` 以超时上下文启动二进制，注入最小 `VM_*` 环境
 3. stdin 写入 `{"function":"...","args":[...]}`
 4. 解析 stdout JSON（含 `events`），回写宿主 `GasMetering`；结果以 `ExecuteResult` 为准
+5. `EstimateGas`：默认读 `gas_profile.json` 静态保守上界；`DryRun` 真执行取 `GasConsumed`
 
 ## 4. 错误处理
 任一阶段失败即中止：
@@ -71,6 +78,7 @@ contracts/{address}/
 - 构建失败
 - 部署缺产物
 - 执行超时 / Gas 超限 / 未知函数
+- 静态 `EstimateGas` 缺少 `gas_profile.json`（旧合约需重部署）
 
 ## 5. 当前限制
 - 参数类型支持：`int` / `int64` / `uint64` / `float64` / `string` / `bool`

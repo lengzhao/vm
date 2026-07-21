@@ -8,7 +8,7 @@
 - **安全优先**：通过关键字/导入白名单与 AST 审查确保执行安全性
 - **开发友好**：降低智能合约开发门槛，让熟悉Go语言的开发者无缝接入
 - **可执行流水线**：Compile → Deploy → Execute 已打通（ProcessRunner）
-- **Gas计费**：入口/函数/循环控制点计费（MVP）
+- **Gas计费**：入口/函数/循环控制点 + 默认库（只读/Log）计费；`EstimateGas` 静态上界与 DryRun
 - **并行执行（设计方向）**：通过对象隔离支持交易并行，尚未实现
 
 > 注意：当前为 Alpha/MVP。ProcessRunner 仅有进程超时与 Gas 限制，**不应用于执行不可信合约**。见 [docs/sandbox_roadmap.md](docs/sandbox_roadmap.md)。
@@ -20,8 +20,8 @@
 2. **ABI生成模块**：从合约源代码提取接口信息
 3. **编译器模块**：Gas 注入、入口生成、`go build` 产出真实可执行文件
 4. **Runner**：进程超时执行合约产物，JSON 请求/响应
-5. **Gas计费模块**：宿主计量 + 编译期函数/循环消耗点
-6. **合约管理模块**：部署、存储和查询合约产物
+5. **Gas计费模块**：宿主计量 + `contractapi` 统一扣费 + `gas_profile.json` / `EstimateGas`
+6. **合约管理模块**：部署、存储和查询合约产物（含 GasProfile）
 7. **Host Runtime / contractapi**：只读链上下文与事件日志（MVP）
 
 ### 安全机制
@@ -37,6 +37,7 @@
 - `Deploy(contract *CompiledContract) (string, error)`：部署合约
 - `Execute(contractAddress, function string, args ...interface{}) ([]byte, error)`：执行合约函数
 - `ExecuteWithContext(..., callCtx *CallContext, ...) (*ExecuteResult, error)`：带 Host 上下文执行
+- `EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)`：静态保守估算或 DryRun
 - `GetLastEvents() []Event`：获取最近一次执行事件
 - `GetContract(address string) (*CompiledContract, error)`：获取合约信息
 - `GetContractABI(address string) (*abi.ABI, error)`：获取合约ABI

@@ -20,10 +20,12 @@
 flowchart TD
     Source[Go 合约源码] --> Validate[AST 校验]
     Validate --> ABI[生成 ABI]
-    ABI --> Gas[注入 Gas 与入口]
+    ABI --> Profile[生成 GasProfile]
+    ABI --> Gas[注入 contractapi.ConsumeGas 与入口]
     Gas --> Build[go build 编译产物]
-    Build --> Store[ContractManager 存储]
-    Store --> Execute[VMEngine.Execute]
+    Profile --> Build
+    Build --> Store[ContractManager 存储含 gas_profile.json]
+    Store --> Execute[VMEngine.Execute / EstimateGas]
     Execute --> Runner[ProcessRunner]
     Runner --> Result[返回结果与 Gas]
 ```
@@ -38,12 +40,12 @@ flowchart TD
 4. **ContractManager**：部署、存储、加载合约元数据和产物
 5. **ABIGenerator**：从 AST 提取 ABI，作为编译流水线一环
 6. **SecurityReviewer**：Import/危险节点/包级可变状态审查
-7. **GasMetering**：宿主侧计量；编译期注入执行侧消耗点
+7. **GasMetering**：宿主侧计量；合约侧统一到 `contractapi`；`EstimateGas` 静态 + DryRun
 
 ### 2.3 当前阶段后置能力
 以下能力保留设计方向，但不作为当前主链路阻塞项：
 - 完整系统调用沙箱 / Docker 隔离
-- Object 存储、跨合约 Call、完整链状态读写
+- Object 存储、跨合约 Call、完整链状态读写（含对应 Gas）
 - 合约升级、并行调度框架
 - TinyGo 作为默认构建器（当前默认 `go build`，可后续切换）
 
@@ -60,10 +62,12 @@ flowchart TD
 - `unsafe`、`go`、`select`、`chan`、`goto`、`map`、`cap`
 - 包级可变全局变量（`var`）；常量允许
 
-### 3.3 Gas 计费（MVP）
-- 执行入口固定基础 Gas
-- 编译期在函数入口和循环体注入 `__vmConsumeGas`
+### 3.3 Gas 计费（已实现）
+- 执行入口固定基础 Gas（10）；函数入口 / 循环迭代各 1
+- 编译期注入 `contractapi.ConsumeGas`；只读上下文与 `Log` 按表扣费
+- Deploy 落盘 `gas_profile.json`；`EstimateGas` 支持静态保守上界与可选 DryRun
 - 子进程通过 `VM_GAS_LIMIT` 接收上限，结果 JSON 回报消耗
+- Object / Call Gas：**后置**
 
 ### 3.4 执行隔离（MVP）
 - 使用独立进程 + 超时执行
@@ -86,9 +90,10 @@ vm/
 ├── runner.go           # ProcessRunner
 ├── host.go             # Host / CallContext / Event
 ├── security.go         # 安全审查
-├── gas.go              # Gas 计量
-├── contract.go         # 合约存储管理
-├── contractapi/        # 合约侧默认库
+├── gas.go              # 宿主 Gas 计量
+├── gas_profile.go      # GasProfile 扫描与静态估算
+├── contract.go         # 合约存储管理（含 gas_profile.json）
+├── contractapi/        # 合约侧默认库 + Gas 计数器
 ├── abi/                # ABI 提取
 └── docs/               # 设计文档
 ```

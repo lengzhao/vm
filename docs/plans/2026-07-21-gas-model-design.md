@@ -166,8 +166,8 @@ Estimated = entry_gas
 
 ## 11. 验收标准
 
-- [ ] `go test ./...` 通过
-- [ ] 默认库调用会增加回报 `gas`
-- [ ] 部署目录含 `gas_profile.json`
-- [ ] `EstimateGas` 静态与 DryRun 行为符合上文
-- [ ] 设计文档与代码一致
+- [x] `go test ./...` 通过
+- [x] 默认库调用会增加回报 `gas`
+- [x] 部署目录含 `gas_profile.json`
+- [x] `EstimateGas` 静态与 DryRun 行为符合上文
+- [x] 设计文档与代码一致

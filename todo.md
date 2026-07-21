@@ -8,7 +8,7 @@
 - 安全审查、ABI、Gas 控制点注入、集成测试已可用
 - Host Runtime MVP 已接入：`contractapi` + `ExecuteWithContext` + 事件回传
 - 加固：禁止宿主根包 import、编译缓存 + embed contractapi、最小 env、CallContext 零值语义、结果自包含
-- **尚未完成**：Object 存储、跨合约 Call、EstimateGas、完整沙箱
+- **尚未完成**：Object 存储、跨合约 Call、完整沙箱
 
 ## 开发计划
 
@@ -30,11 +30,11 @@
 - [x] ExecuteWithContext / GetLastEvents
 - [ ] Object 存储与跨合约 Call 后置
 
-### 第六阶段：Gas 模型推进
-- [ ] 明确入口 / 函数 / 循环计费点基线
-- [ ] 默认库接口 Gas 表（随 Host 生效）
-- [ ] EstimateGas 保守估算
-- [ ] 基准测试
+### 第六阶段：Gas 模型推进（已完成）
+- [x] 明确入口 / 函数 / 循环计费点基线
+- [x] 默认库接口 Gas 表（只读上下文 + Log；Object/Call 后置）
+- [x] EstimateGas 保守估算（静态 Profile + 可选 DryRun）
+- [x] 基准测试（Add / Loop / EstimateGasStatic）
 
 ### 第七阶段：沙箱增强
 - [ ] 可插拔 Runner（Process / Docker / 未来 WASM）

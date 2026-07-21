@@ -50,7 +50,19 @@ BlockTime() uint64
 Sender() string
 ContractAddress() string
 Log(eventName string, keyValues ...any)
+
+// Gas（统一计数器；默认库内部按表扣费）
+InitGas(limit uint64)
+ConsumeGas(amount uint64)
+GasUsed() uint64
+ResetGas()
 ```
+
+| 接口 | Gas | 状态 |
+|------|-----|------|
+| BlockHeight / BlockTime / Sender / ContractAddress | 1 | 已实现 |
+| Log | 2 | 已实现 |
+| Object / Transfer / Call | — | 后置 |
 
 ## 4. 通信方式（当前）
 
@@ -76,7 +88,7 @@ Log(eventName string, keyValues ...any)
 
 ## 5. 后置
 
-- Object 存储 / Transfer / Call
+- Object 存储 / Transfer / Call（含对应 Gas）
 - 执行中双向 RPC/IPC
 
 ## 6. 验收
@@ -85,4 +97,5 @@ Log(eventName string, keyValues ...any)
 - [x] `ExecuteWithContext` 可注入 Sender / Height（含零值 Height）
 - [x] 事件以 `ExecuteResult` 自包含返回
 - [x] 禁止合约 import 宿主根包
+- [x] 默认库只读 + Log 按表扣费
 - [x] Object / Call 明确后置

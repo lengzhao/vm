@@ -2,37 +2,38 @@
 
 ## 1. 概述
 
-本文档详细描述了智能合约虚拟机中的Gas计费与资源控制系统。该系统旨在防止合约执行过程中消耗过多系统资源，确保网络的稳定性和公平性。
+本文档描述智能合约虚拟机中的 Gas 计费与资源控制。目标是防止合约执行消耗过多系统资源，保证网络稳定与公平。
 
 ## 2. Gas计费原理
 
-当前实现为 MVP，后续可扩展默认库计费。
-
 ### 2.1 编译期注入（已实现）
 
-在合约编译阶段，系统在以下位置插入 `__vmConsumeGas`：
+编译阶段在以下位置插入 `contractapi.ConsumeGas`：
 
-- 每个导出/内部函数入口
-- `for` / `range` 循环体开头
-- 执行入口固定基础 Gas（当前为 10）
+- 每个导出/内部函数入口（1 Gas）
+- `for` / `range` 循环体开头（每次迭代 1 Gas）
+- 执行入口固定基础 Gas（`contractapi.InitGas` + `ConsumeGas(10)`）
 
-合约进程通过环境变量 `VM_GAS_LIMIT` 接收上限，并在 JSON 响应中回报 `gas`。
+合约进程通过环境变量 `VM_GAS_LIMIT` 接收上限，JSON 响应中回报 `gas`（即 `contractapi.GasUsed()`）。
 
-### 2.2 接口操作计费（后置）
+Deploy 同时落盘 `gas_profile.json`，供静态 `EstimateGas` 使用。
 
-默认库函数的固定 Gas 表保留设计，待 Host Runtime 落地后接入：
+### 2.2 默认库接口计费（已实现 / 后置）
 
-- 基础查询消耗较少 gas
-- 存储与跨合约调用消耗较多 gas
-- 复杂计算在 default library 中显式定价
+| 状态 | 接口 |
+|------|------|
+| **已实现** | `BlockHeight` / `BlockTime` / `Sender` / `ContractAddress` / `Log` |
+| **后置** | Object 存储、`Transfer`、`Call` 等 |
+
+已实现接口在 `contractapi` 内按 Gas 表调用 `ConsumeGas`。
 
 ### 2.3 历史“按行计费”说明
 
-早期方案按代码行计费。当前改为控制点计费，语义更稳定、更易测试。文档中的行级模型视为后续可选精细化方案，不再作为当前实现约束。
+早期方案按代码行计费。当前为控制点计费，语义更稳定、更易测试。行级模型视为可选精细化方案，不作为当前实现约束。
 
 ## 3. Gas消耗模型
 
-### 3.1 MVP 已实现
+### 3.1 控制点（已实现）
 
 | 操作类型 | Gas消耗 |
 |---------|--------|
@@ -50,133 +51,109 @@
 | 条件判断 | 1 |
 | 函数调用开销 | 5 |
 
-### 3.3 区块链接口Gas消耗（Host Runtime 接入后生效）
+### 3.3 默认库接口 Gas 表
 
-| 接口函数 | Gas消耗 |
-|---------|--------|
-| BlockHeight() | 1 |
-| BlockTime() | 1 |
-| ContractAddress() | 1 |
-| Sender() | 1 |
-| Balance() | 5 |
-| Transfer() | 20 |
-| Log() | 2 |
-| CreateObject() | 50 |
-| GetObject() | 10 |
-| GetObjectWithOwner() | 15 |
-| DeleteObject() | 10 |
-| Object.Get() | 5 |
-| Object.Set() | 10 |
-| Object.SetOwner() | 10 |
-| Call() | 30 |
+| 接口函数 | Gas消耗 | 状态 |
+|---------|--------|------|
+| BlockHeight() | 1 | 已实现 |
+| BlockTime() | 1 | 已实现 |
+| ContractAddress() | 1 | 已实现 |
+| Sender() | 1 | 已实现 |
+| Log() | 2 | 已实现 |
+| Balance() | 5 | 后置 |
+| Transfer() | 20 | 后置 |
+| CreateObject() | 50 | 后置 |
+| GetObject() | 10 | 后置 |
+| GetObjectWithOwner() | 15 | 后置 |
+| DeleteObject() | 10 | 后置 |
+| Object.Get() | 5 | 后置 |
+| Object.Set() | 10 | 后置 |
+| Object.SetOwner() | 10 | 后置 |
+| Call() | 30 | 后置 |
 
-### 3.4 对象存储接口Gas消耗（后置）
+### 3.4 对象存储 / 跨合约（后置）
 
-| 接口函数 | Gas消耗 |
-|---------|--------|
-| CreateObject() | 50 |
-| GetObject() | 10 |
-| GetObjectWithOwner() | 15 |
-| DeleteObject() | 10 |
-| Object.Get() | 5 |
-| Object.Set() | 10 |
-| Object.SetOwner() | 10 |
-
-### 3.5 跨合约调用Gas消耗（后置）
-
-| 操作 | Gas消耗 |
-|-----|--------|
-| Call() 基础费用 | 30 |
-| Call() 预留费用 | 根据被调用合约复杂度动态计算 |
+Object 与 `Call()` 计费表项保留设计，待对应 Host 能力落地后再接入。
 
 ## 4. Gas限制与超限处理
 
 ### 4.1 Gas限制机制
 
-- 每个合约执行都有最大Gas限制
-- 当Gas消耗超过限制时，合约执行立即终止
-- 超限的交易被视为无效交易
+- 每个合约执行都有最大 Gas 限制（`VM_GAS_LIMIT` / `CallContext.GasLimit`）
+- 超限时 `contractapi.ConsumeGas` panic，合约进程以 `ok=false` 结束
+- Runner / Engine 将该错误向上返回
 
 ### 4.2 超限处理流程
 
-1. 监控Gas消耗
-2. 当接近限制时，触发预警
-3. 超过限制时，立即停止执行
-4. 所有状态操作都是缓存到内存中，全部正确执行后，才会提交到数据库
-5. 如果异常，则不提交，相当于回滚了
-6. 返回Gas不足错误
+1. 合约侧累计消耗并检查上限
+2. 超限立即停止执行
+3. 本阶段无持久状态提交；失败等价于无副作用
+4. 返回 Gas 不足错误
 
 ## 5. 实现细节
 
-### 5.1 Gas计数器
-
-Gas计数器在合约执行过程中跟踪已消耗的Gas数量：
+### 5.1 合约侧计数器（`contractapi`）
 
 ```go
-type GasMeter struct {
-    limit    uint64
-    consumed uint64
-    enabled  bool
+func InitGas(limit uint64)
+func ConsumeGas(amount uint64) // 超限 panic("gas limit exceeded")
+func GasUsed() uint64
+func ResetGas()
+```
+
+### 5.2 宿主侧计量
+
+宿主 `GasMetering` 记录最近一次执行回报的 `gas`，供 `GetGasConsumed()` 兼容查询。推荐使用 `ExecuteResult.GasConsumed`。
+
+### 5.3 GasProfile
+
+路径：`contracts/{address}/gas_profile.json`
+
+Compile 对原始源码 AST 扫描生成 Profile；Deploy 落盘。扫描规则：
+
+- `func_entries`：导出函数自身入口 + 体内对同包其他函数的直接调用（按名去重）
+- `loop_sites`：体内 `for` / `range` 节点数
+- `api_calls`：体内对 `contractapi` 选择器的直接调用次数
+
+## 6. EstimateGas（已实现）
+
+```go
+type EstimateOptions struct {
+    DryRun   bool
+    LoopBound uint64 // 0 → 默认 1000
+    Args     []any
+    CallCtx  *CallContext
 }
+
+func (vm *VMEngine) EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)
 ```
 
-### 5.2 Gas消耗函数
-
-```go
-func (g *GasMeter) ConsumeGas(amount uint64, descriptor string) error {
-    if !g.enabled {
-        return nil
-    }
-    
-    g.consumed += amount
-    if g.consumed > g.limit {
-        return fmt.Errorf("out of gas: %s", descriptor)
-    }
-    return nil
-}
-```
-
-### 5.3 编译期Gas注入
-
-在编译阶段，通过AST分析在适当位置插入Gas消耗代码：
-
-```go
-// 插入示例
-gasMeter.ConsumeGas(1, "code line execution")
-```
-
-## 6. 模块职责划分
-
-### 6.1 Gas计费模块
-Gas计费模块([gas_metering_detailed_design.md](./detailed_design/gas_metering_detailed_design.md))负责基础的Gas计量功能：
-- 设置Gas限制
-- 跟踪Gas消耗
-- 超限时处理（panic）
-
-### 6.2 接口模块
-接口模块负责具体的Gas消耗数值计算：
-- 根据操作类型确定Gas消耗量
-- 在接口函数调用时消耗相应Gas
-- 提供Gas估算功能
-
-## 7. EstimateGas 与基准测试（下一阶段）
-
-### 7.1 EstimateGas 初版思路
+### 6.1 静态模式（默认）
 
 ```text
-EstimateGas ≈ 入口基础Gas(10)
-            + 静态函数入口数 * 1
-            + 静态循环控制点数 * 配置迭代上界
-            + 默认库调用表累加（Host 接入后）
+LoopBound = opts.LoopBound; if 0 then 1000
+Estimated = entry_gas
+          + func_entries * 1
+          + loop_sites * LoopBound
+          + Σ(api_calls[name] * GasTable[name])
 ```
 
-初版只做保守上界，不做精确路径分析。
+故意偏高；不做路径敏感分析。无 `gas_profile.json`（旧合约）时返回 error，需重新 Compile/Deploy。
 
-### 7.2 基准测试方向
+### 6.2 DryRun 模式
 
-1. 短函数：`Add`
-2. 固定迭代循环函数
-3. 多返回值函数
-4. （后续）含 `Log` / Object / Call 的合约
+调用 `ExecuteWithContext`，成功时 `Estimated = GasConsumed`，`Mode = "dry_run"`；失败（含 OOG）返回 error。
+
+## 7. 基准测试
+
+`gas_bench_test.go` 提供：
+
+1. `BenchmarkExecuteAdd` — 短函数
+2. `BenchmarkExecuteLoop` — 固定迭代循环
+3. `BenchmarkEstimateGasStatic` — 静态估算（含 Log）
+
+```bash
+go test . -bench=BenchmarkExecute -benchtime=1x -count=1
+```
 
 详细设计见 [`detailed_design/gas_metering_detailed_design.md`](detailed_design/gas_metering_detailed_design.md)。

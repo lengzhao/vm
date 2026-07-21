@@ -5,7 +5,7 @@
 Gas 分两层：
 
 1. **宿主侧** `GasMetering`：记录最近一次执行消耗
-2. **合约侧** 编译期注入的 `__vmConsumeGas`：执行中硬限制
+2. **合约侧** `contractapi`：统一计数器；编译期注入 `ConsumeGas`；默认库按表扣费
 
 ## 2. 宿主接口
 
@@ -19,50 +19,64 @@ type GasMetering interface {
 }
 ```
 
-`VMEngine.Execute` 在执行后把子进程回报的 `gas` 写入宿主计量器。
+`VMEngine.ExecuteWithContext` 在执行后把子进程回报的 `gas` 写入宿主计量器。
 
-## 3. MVP 计费点（已实现）
+## 3. 计费点（已实现）
 
-| 计费点 | 消耗 |
-|--------|------|
-| 入口基础 Gas | 10 |
-| 函数入口 | 1 |
-| `for` / `range` 每次迭代 | 1 |
+| 计费点 | 消耗 | 实现 |
+|--------|------|------|
+| 入口基础 Gas | 10 | entry：`InitGas` + `ConsumeGas(10)` |
+| 函数入口 | 1 | 编译注入 `contractapi.ConsumeGas(1)` |
+| `for` / `range` 每次迭代 | 1 | 编译注入 |
+| BlockHeight / BlockTime / Sender / ContractAddress | 1 | `contractapi` 内部 |
+| Log | 2 | `contractapi` 内部 |
 
 超限时合约进程 panic，`ok=false`，Runner 返回错误。
 
-## 4. 下一阶段模型
+Object / Transfer / Call 计费：**后置**。
 
-### 4.1 默认库接口定价（Host 接入后生效）
+## 4. GasProfile 与 EstimateGas（已实现）
 
-保留 [`../gas_metering.md`](../gas_metering.md) 中的接口表作为目标态，例如：
+### 4.1 GasProfile
 
-- `BlockHeight` / `Sender`：低消耗
-- `Log`：中低消耗
-- `CreateObject` / `Transfer` / `Call`：高消耗
+Compile 扫描原始源码生成；Deploy 写入 `gas_profile.json`。
 
-### 4.2 EstimateGas（计划）
-
-保守估算：
-
-```text
-EstimateGas ≈ 入口基础Gas
-            + 静态函数入口数 * 1
-            + 静态循环控制点数 * 估算迭代上界
-            + 默认库调用表累加
+```json
+{
+  "version": 1,
+  "entry_gas": 10,
+  "functions": {
+    "Add": { "func_entries": 1, "loop_sites": 0, "api_calls": {} }
+  }
+}
 ```
 
-初版可不做精确路径分析，只给出上界或配置化粗估。
+### 4.2 EstimateGas
 
-### 4.3 基准测试方向
+```go
+func (vm *VMEngine) EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)
+```
 
-- 短函数：`Add`
-- 循环函数：固定 N 次循环
-- 多返回值函数
-- （后续）含默认库调用的合约
+- **静态（默认）**：读 Profile，按保守上界公式估算；`Mode = "static"`
+- **DryRun**：真执行取 `GasConsumed`；`Mode = "dry_run"`
+- 无 Profile / 未知函数 → error
+- `opts == nil` → 静态 + 默认 LoopBound(1000)
 
-## 5. 明确未实现
+静态公式：
+
+```text
+Estimated = entry_gas + func_entries*1 + loop_sites*LoopBound + Σ(api_calls * GasTable)
+```
+
+### 4.3 基准测试
+
+- `BenchmarkExecuteAdd`
+- `BenchmarkExecuteLoop`
+- `BenchmarkEstimateGasStatic`
+
+## 5. 明确未实现 / 后置
 
 - 按代码行计费
+- 路径敏感 / 精确迭代次数推断的 EstimateGas
+- Object / Transfer / Call 接口计费
 - 状态回滚数据库语义
-- 精确路径敏感的 EstimateGas
