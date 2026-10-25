@@ -14,7 +14,7 @@
 - 包级重定义预声明名称会被拒绝，以免覆盖入口依赖的 bool/string/any/len/true/nil 等含义。入口导入与局部变量使用 __vm 内部名称，合约参数 req/err/result/_ 不产生冲突。
 - RequireDeterminism 在这份类型集合上继续收紧，例如拒绝浮点，详见确定性策略文档。
 
-ABI JSON 顶层必须包含 `"version":1`。协议版本同时保存在 CompiledContract 与 metadata.json 的 protocol_version 字段；Store、Load、Runner 都检查版本。标签不代替二进制完整性或来源认证，认证仍属 B3。
+ABI JSON 顶层必须包含 `"version":1`。协议版本同时保存在 CompiledContract 与 metadata.json 的 protocol_version 字段；Store、Load、Runner 都检查版本。B3 的[产物清单](artifact_manifest.md)另外校验二进制、ABI 与元数据摘要；标签和摘要都不代替来源认证。
 
 ## 请求
 
@@ -52,7 +52,7 @@ version、ok、gas 必填。仅允许一个 JSON 响应，未知字段与矛盾�
 
 合约响应可能返回 INVALID_REQUEST、INVALID_ARGUMENTS、UNKNOWN_FUNCTION、CONTRACT_ERROR、CONTRACT_PANIC、GAS_LIMIT_EXCEEDED、UNSUPPORTED_VERSION、INVALID_RESULT。
 
-宿主还区分 INVALID_RESPONSE、EXECUTION_TIMEOUT、EXECUTION_CANCELED、OUTPUT_LIMIT_EXCEEDED、PROCESS_FAILURE，以及签名校验的 UNSUPPORTED_ABI。构建、存储、源码安全审查仍保留各自的错误原因；本节不承诺把所有文件系统和编译错误都改成执行错误。
+宿主还区分 INVALID_RESPONSE、EXECUTION_TIMEOUT、EXECUTION_CANCELED、OUTPUT_LIMIT_EXCEEDED、PROCESS_FAILURE，以及函数签名校验的 UNSUPPORTED_ABI、产物完整性校验的 ARTIFACT_INTEGRITY 和部署地址已有不同或损坏记录的 DEPLOYMENT_CONFLICT。构建、存储、源码安全审查仍保留各自的错误原因；本节不承诺把所有文件系统和编译错误都改成执行错误。
 
 Go 调用方使用 errors.As 获取 *vm.ExecutionError 并比较 Code。Unwrap 保留底层原因；取消和超时可分别用 errors.Is(err, context.Canceled / context.DeadlineExceeded) 检查。诊断文本不作为程序分支依据。
 

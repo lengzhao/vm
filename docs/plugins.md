@@ -5,11 +5,10 @@ VM 使用 `github.com/lengzhao/pluginkit v0.1.6`，与 agentkit / GoChainKit 采
 ## 分层与能力
 
 - `core/`：公共数据类型、能力接口、稳定协议错误和调用上下文。
-- `cap/`：面向扩展作者的能力名称，与 core 接口保持类型一致。
 - `internal/{compiler,security,policy,gas,abigen,storage,deployment,process,engine}/`：按职责隔离的内建实现，只依赖公共契约和必要的公共实现工具。
 - `internal/callcontext/`：调用上下文解析与传递；`internal/compat/`：旧 API 适配。
 - `internal/builtin/`：历史白盒回归测试，不进入生产插件装配路径。
-- `plugins/`：每种能力的 Config/Deps 构造与注册；第三方插件只需实现 core/cap 接口。
+- `plugins/`：每种能力的 Config/Deps 构造与注册；第三方插件只需实现 core 接口。
 - `assembly/`：配置读取、默认图、PluginKit 构建和实例生命周期。
 - 根 `vm` 包：现有 API 的兼容入口，默认使用插件图。
 
@@ -53,7 +52,10 @@ if err != nil { return err }
 defer rt.Stop(context.Background())
 compiled, err := rt.Engine.Compile(ctx, source)
 if err != nil { return err }
-address, err := rt.Engine.Deploy(ctx, compiled)
+address, err := rt.Engine.Deploy(ctx, core.DeploymentRequest{
+    Contract: compiled,
+    Input: core.DeploymentInput{ChainID: "chain-A", Sender: "alice", Nonce: 1},
+})
 if err != nil { return err }
 result, err := rt.Engine.Execute(ctx, core.ExecutionRequest{
     Address: address, Function: "Add", Args: []any{2, 3},
@@ -81,6 +83,28 @@ rt, err := assembly.Build(ctx, cfg)
 
 `DefaultConfig` 保留传入布尔值，包括显式 false；安全、确定性和 Gas 不会被悄悄开启。预设文件则显式开启安全审查与 Gas。超时配置使用 `30s` 等 Go duration 字符串。
 
+## Go 编译工具链
+
+`compiler/go` 可配置 `goBinary`（Go 可执行文件路径或命令名）与 `goVersion`（完整版本，例如 `go1.26.1`）。默认从 PATH 解析 `go`，版本必须与构建 VM 的 Go 版本完全一致。每次 Compile 在缓存查找前探测实际版本和宿主平台，不匹配直接失败；探测和构建共用 `buildTimeout` 预算及调用方取消信号。插件工厂不启动工具链进程。
+
+```yaml
+compiler:
+  use: compiler/go
+  config:
+    goBinary: /opt/go/bin/go
+    goVersion: go1.26.1
+    buildTimeout: 30s
+  deps:
+    policy: policy
+    abi: abi
+    injector: injector
+    profiler: profiler
+```
+
+此配置片段放在 `plugins` 下。编译禁用 CGO 和自动下载工具链，固定宿主 GOOS/GOARCH；忽略外部 GOROOT、GOFLAGS、GOEXPERIMENT、GOWORK、持久化 GOENV 和架构调优变量。构建与版本探测复用同一个绝对可执行路径；缓存身份包含实际版本、平台及流水线版本。开发模式同样使用这些构建约束，自定义源码策略不改变它们。
+
+B3 已实现版本化产物清单及完整性校验：记录实际工具链与 runtime/Gas 规则，校验缓存、部署、加载与执行的内容摘要。完整格式与插件职责见 [产物清单](artifact_manifest.md)。工具链与产物生产者仍须受信任；来源认证后置。
+
 ## 注册第三方插件
 
 ```go
@@ -92,7 +116,7 @@ import (
 )
 
 type Config struct { Endpoint string `json:"endpoint"` }
-type Deps struct { /* 按需声明 core/cap 接口，以 json tag 命名 */ }
+type Deps struct { /* 按需声明 core 接口，以 json tag 命名 */ }
 
 func New(cfg Config, deps Deps) (core.Runner, error) {
     return newRunner(cfg.Endpoint), nil // newRunner 是自定义实现
@@ -110,7 +134,8 @@ func init() { pluginkit.Register("my/runner", New) }
 
 - `ContractCompiler` 仅有 `Compile(context.Context, string)`；审查和 Gas 注入分别由 `SourcePolicy`、`GasInjector` 提供。
 - `SecurityReviewer` 仅有 `Review(string) error`，白名单查询是具体实现的辅助方法。
-- `ContractStore` 组合 `Put(ctx, address, artifact)` 与 `Get(ctx, address)`；地址分配属于独立 `ContractDeployer`。存储不修改调用方产物。
+- `ContractStore` 组合 `Put(ctx, address, artifact)` 与 `Get(ctx, address)`；独立 `ContractCreator.Create` 提供只创建及相同身份幂等重试，默认部署器只依赖 Creator。文件存储实现这三种窄能力，存储不修改调用方产物。
+- `ContractDeployer.Deploy(ctx, DeploymentRequest)` 使用显式 ChainID/Sender/Nonce/Salt 和清单摘要派生地址，持久化部署记录；完整规则与兼容入口见 [确定性部署](deployment.md)。
 - `Engine` 仅组合编译、部署、读取、执行、ABI 和估算等业务能力。`Execute(ctx, ExecutionRequest)` 返回自包含 `ExecuteResult`，不要求最近结果查询或生命周期方法。
 - 编译器依赖 `GasProfileBuilder`，引擎依赖 `GasEstimator`；同一个 `GasProfiler` 插件同时实现两者，以保证画像和估算模型配对。内建估算器严格拒绝画像版本不为 1 的输入。
 

@@ -40,7 +40,7 @@ func run(rt *assembly.Runtime) error {
 	if err != nil {
 		return err
 	}
-	a, err := rt.Engine.Deploy(context.Background(), c)
+	a, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		return err
 	}

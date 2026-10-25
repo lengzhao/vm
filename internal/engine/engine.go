@@ -60,17 +60,24 @@ func (e *Engine) GenerateABI(ctx context.Context, source string) (*abi.ABI, erro
 	}
 	return e.deps.ABI.Generate(source)
 }
-func (e *Engine) Deploy(ctx context.Context, c *core.CompiledContract) (string, error) {
+func (e *Engine) Deploy(ctx context.Context, request core.DeploymentRequest) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return e.deps.Deployer.Deploy(ctx, c)
+	return e.deps.Deployer.Deploy(ctx, request)
 }
 func (e *Engine) Get(ctx context.Context, address string) (*core.CompiledContract, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return e.deps.Contracts.Get(ctx, address)
+	contract, err := e.deps.Contracts.Get(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.deps.Validator.ValidateArtifact(ctx, contract); err != nil {
+		return nil, err
+	}
+	return contract, nil
 }
 
 func (e *Engine) Execute(ctx context.Context, req core.ExecutionRequest) (*core.ExecuteResult, error) {

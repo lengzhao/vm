@@ -3,7 +3,7 @@
 ## 1. 引言
 
 ### 1.1 编写目的
-本文档描述 PluginKit 装配下的模块边界。各能力通过 core/cap 接口、Config/Deps 构造函数和显式配置图组合；注册与依赖排序复用 PluginKit，详见 [插件指南](plugins.md)。
+本文档描述 PluginKit 装配下的模块边界。各能力通过 core 接口、Config/Deps 构造函数和显式配置图组合；注册与依赖排序复用 PluginKit，详见 [插件指南](plugins.md)。
 
 ### 1.2 设计目标
 1. 打通 Compile → Deploy → Execute
@@ -21,7 +21,7 @@ flowchart LR
     Engine --> Runner[Runner 插件]
     Engine --> Reader[ContractReader]
     Engine --> Deployer[Deployment 插件]
-    Deployer --> Store[ContractStore 插件]
+    Deployer --> Store[存储的 ContractCreator 视图]
     Deployer --> Validator[ArtifactValidator]
     Engine --> Validator
     Validator --> Policy
@@ -48,7 +48,7 @@ flowchart LR
 
 ### 3.1 Engine 业务门面
 
-`core.Engine` 只组合业务能力：`Compile(ctx, source)`、`Deploy(ctx, artifact)`、`Get(ctx, address)`、`Execute(ctx, ExecutionRequest)`、`GenerateABI(ctx, source)` 和 `EstimateGas(ctx, address, function, opts)`。`Execute` 返回 `*ExecuteResult`，事件和 Gas 属于本次结果。
+`core.Engine` 只组合业务能力：`Compile(ctx, source)`、`Deploy(ctx, DeploymentRequest)`、`Get(ctx, address)`、`Execute(ctx, ExecutionRequest)`、`GenerateABI(ctx, source)` 和 `EstimateGas(ctx, address, function, opts)`。`Execute` 返回 `*ExecuteResult`，事件和 Gas 属于本次结果。
 
 旧 getter、版本查询和 `Stop() error` 留在根包兼容门面。`assembly.Runtime.Stop(ctx)` 处理实例可选的 `Stop(context.Context) error`，生命周期不是 Engine 的必选职责。
 
@@ -79,7 +79,7 @@ type Runner interface {
 
 ### 3.4 部署与存储
 
-`ContractReader.Get(ctx, address)` 读取完整产物；`ContractWriter.Put(ctx, address, artifact)` 保存到调用方选择的地址，且不修改输入。`ContractStore` 组合两者，`ContractDeployer.Deploy(ctx, artifact)` 独立负责部署规则和地址分配。ABI、画像从读取结果投影，不再为每种字段增加存储接口。
+`ContractReader.Get(ctx, address)` 读取完整产物；`ContractWriter.Put(ctx, address, artifact)` 保存到调用方选择的地址，且不修改输入。`ContractStore` 组合两者，独立 `ContractCreator.Create` 负责只创建与相同身份重试。`ContractDeployer.Deploy(ctx, DeploymentRequest)` 消费 Creator 与校验器，按显式部署输入派生地址，详见 [确定性部署](deployment.md)。ABI、画像从读取结果投影，不再为每种字段增加存储接口。
 
 ### 3.5 Gas 与 ABI
 
@@ -95,7 +95,7 @@ type Runner interface {
 - 合约升级机制
 
 ## 5. 包结构原则
-- core/cap 定义稳定契约，插件不依赖根包兼容入口
+- core 定义稳定契约，插件不依赖根包兼容入口
 - plugins 提供注册工厂，internal 按 compiler/security/policy/gas/abigen/storage/deployment/process/engine 分包；compat 负责旧 API，builtin 仅保留历史回归测试
 - assembly 负责唯一的 PluginKit 构建路径及生命周期
 - contractapi 保持独立的合约侧依赖，避免引入宿主插件运行时

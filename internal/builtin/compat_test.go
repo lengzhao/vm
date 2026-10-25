@@ -4,11 +4,13 @@ package vm
 import (
 	compatvm "github.com/lengzhao/vm"
 	"github.com/lengzhao/vm/internal/abigen"
+	"github.com/lengzhao/vm/internal/artifact/artifacttest"
 	"github.com/lengzhao/vm/internal/compat"
 	compilerimpl "github.com/lengzhao/vm/internal/compiler"
 	"github.com/lengzhao/vm/internal/gas"
 	"github.com/lengzhao/vm/internal/policy"
 	"github.com/lengzhao/vm/internal/security"
+	"testing"
 	"time"
 )
 
@@ -106,4 +108,8 @@ func compilerWithTimeout(dir string, timeout time.Duration) ContractCompiler {
 		panic(err)
 	}
 	return compat.NewCompiler(c, p, i)
+}
+
+func sealedTestArtifact(t testing.TB, c *CompiledContract) *CompiledContract {
+	return artifacttest.Seal(t, c)
 }

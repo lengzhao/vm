@@ -54,7 +54,7 @@ build_<hash>/
   entry.go      # 框架入口
 ```
 
-输出：`contract_<hash>` 可执行文件。
+输出：`contract_<hash>/artifact`，同目录原子发布 `manifest.json` 和 `manifest.sha256`。清单记录源码、生成代码、工具链、runtime 与 ABI/Gas/协议版本及内容摘要；详见 [产物清单](../artifact_manifest.md)。
 
 ## 7. 后置
 
@@ -63,4 +63,4 @@ build_<hash>/
 
 ## 8. 缓存与画像
 
-缓存指纹包括源码、策略 ID、实际插桩代码、入口、内嵌 contractapi、工具链和流水线版本。GasProfileBuilder 生成模型画像；引擎仅依赖 GasEstimator，默认由同一个 GasProfiler 实现配对。内建画像版本为 1，估算器严格拒绝其他版本；旧根包 helper 单独适配历史版本 0。
+缓存指纹包括源码、策略 ID 与保证、实际插桩代码、入口、内嵌 contractapi、ABI/画像、工具链和流水线版本。缓存命中前验证清单、摘要及本次预期构建输入；损坏缓存明确拒绝。GasProfileBuilder 生成模型画像；引擎仅依赖 GasEstimator，默认由同一个 GasProfiler 实现配对。内建画像版本为 1，估算器严格拒绝其他版本；旧根包 helper 单独适配历史版本 0。

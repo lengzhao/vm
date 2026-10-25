@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/lengzhao/vm/abi"
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/artifact"
 	"os"
 	"path/filepath"
 	"sync"
@@ -36,17 +37,28 @@ func (c *Store) addressDir(address string) (string, error) {
 }
 
 // StoreContract 存储合约
-func (c *Store) Put(ctx context.Context, address string, artifact *core.CompiledContract) error {
+func (c *Store) Put(ctx context.Context, address string, input *core.CompiledContract) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.writeRecord(ctx, address, input, false)
+}
+
+func (c *Store) Create(ctx context.Context, address string, input *core.CompiledContract) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.writeRecord(ctx, address, input, true)
+}
+
+func (c *Store) writeRecord(ctx context.Context, address string, input *core.CompiledContract, createOnly bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if artifact == nil {
+	if input == nil {
 		return executionError(core.CodeInvalidRequest, "contract cannot be nil", nil)
 	}
-	snapshot := *artifact
+	snapshot := *input
 	contract := &snapshot
+	contract.Address = address
 
 	if contract == nil {
 		return executionError(core.CodeInvalidRequest, "contract cannot be nil", nil)
@@ -57,10 +69,18 @@ func (c *Store) Put(ctx context.Context, address string, artifact *core.Compiled
 	if err := abi.ValidateCallable(contract.ABI); err != nil {
 		return executionError(core.CodeUnsupportedABI, err.Error(), err)
 	}
+	if err := artifact.Validate(ctx, contract); err != nil {
+		return err
+	}
 	// 创建合约存储目录
 	finalDir, err := c.addressDir(address)
 	if err != nil {
 		return err
+	}
+	if createOnly {
+		if exists, err := c.identicalRecord(ctx, address, contract); exists || err != nil {
+			return err
+		}
 	}
 	contractDir, err := os.MkdirTemp(c.storageDir, ".record-")
 	if err != nil {
@@ -90,6 +110,8 @@ func (c *Store) Put(ctx context.Context, address string, artifact *core.Compiled
 
 	// 创建元数据文件
 	metadata := &core.ContractMetadata{
+		Deployment:      contract.Deployment,
+		ManifestSHA256:  contract.ManifestSHA256,
 		Guarantees:      contract.Guarantees,
 		Address:         address,
 		SourceHash:      contract.SourceHash,
@@ -139,6 +161,30 @@ func (c *Store) Put(ctx context.Context, address string, artifact *core.Compiled
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	manifest, err := json.MarshalIndent(contract.Manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writeFile(ctx, filepath.Join(contractDir, "manifest.json"), manifest, 0644); err != nil {
+		return err
+	}
+	// Verify the actual copied bytes before publishing the replacement.
+	if err := artifact.Validate(ctx, contract); err != nil {
+		return err
+	}
+	if createOnly {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := os.Rename(contractDir, finalDir); err != nil {
+			// A complete nonempty address directory cannot be overwritten by rename.
+			if exists, checkErr := c.identicalRecord(ctx, address, contract); exists || checkErr != nil {
+				return checkErr
+			}
+			return fmt.Errorf("publish deployment: %w", err)
+		}
+		return nil
+	}
 	return c.commit(contractDir, finalDir)
 }
 
@@ -148,7 +194,7 @@ func (c *Store) gasProfile(ctx context.Context, address string) (*core.GasProfil
 	data, err := readFile(ctx, profilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("gas profile not found for contract %s", address)
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to read gas profile: %w", err)
 	}
@@ -164,6 +210,10 @@ func (c *Store) gasProfile(ctx context.Context, address string) (*core.GasProfil
 func (c *Store) Get(ctx context.Context, address string) (*core.CompiledContract, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.get(ctx, address)
+}
+
+func (c *Store) get(ctx context.Context, address string) (*core.CompiledContract, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -207,27 +257,27 @@ func (c *Store) Get(ctx context.Context, address string) (*core.CompiledContract
 		return nil, executionError(core.CodeUnsupportedABI, err.Error(), err)
 	}
 
-	// 查找可执行文件
-	var execPath string
-	entries, err := os.ReadDir(contractDir)
+	manifestBytes, err := readFile(ctx, filepath.Join(contractDir, "manifest.json"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read contract directory: %w", err)
-	}
-
-	skipNames := map[string]bool{
-		"metadata.json":    true,
-		"abi.json":         true,
-		"gas_profile.json": true,
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && !skipNames[entry.Name()] {
-			execPath = filepath.Join(contractDir, entry.Name())
-			break
+		if os.IsNotExist(err) {
+			return nil, executionError(core.CodeUnsupportedVersion, "artifact manifest missing; recompile and deploy", err)
 		}
+		return nil, err
+	}
+	var manifest core.ArtifactManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return nil, executionError(core.CodeArtifactIntegrity, "invalid artifact manifest", err)
+	}
+	execPath := filepath.Join(contractDir, "artifact")
+	if metadata.Address != address {
+		return nil, executionError(core.CodeArtifactIntegrity, "stored address mismatch", nil)
 	}
 
 	// 创建合约对象
 	contract := &core.CompiledContract{
+		Deployment:      metadata.Deployment,
+		Manifest:        &manifest,
+		ManifestSHA256:  metadata.ManifestSHA256,
 		ExecutablePath:  execPath,
 		ABI:             &contractABI,
 		CompileTime:     metadata.DeployTime, // 使用部署时间作为编译时间
@@ -238,8 +288,13 @@ func (c *Store) Get(ctx context.Context, address string) (*core.CompiledContract
 		Address:         address,
 	}
 
-	if profile, err := c.gasProfile(ctx, address); err == nil {
-		contract.GasProfile = profile
+	profile, err := c.gasProfile(ctx, address)
+	if err != nil {
+		return nil, executionError(core.CodeArtifactIntegrity, "invalid gas profile", err)
+	}
+	contract.GasProfile = profile
+	if err := artifact.Validate(ctx, contract); err != nil {
+		return nil, err
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -248,12 +303,49 @@ func (c *Store) Get(ctx context.Context, address string) (*core.CompiledContract
 	return contract, nil
 }
 
+// identicalRecord is called while the instance lock is held. Other Create
+// instances publish complete directories atomically; Put's replacement contract
+// still requires callers to coordinate cross-instance writers.
+func (c *Store) identicalRecord(ctx context.Context, address string, input *core.CompiledContract) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	path, err := c.addressDir(address)
+	if err != nil {
+		return false, err
+	}
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	existing, err := c.get(ctx, address)
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if err != nil {
+		return false, executionError(core.CodeDeploymentConflict, "address already contains an invalid record", err)
+	}
+	sameDeployment := (existing.Deployment == nil && input.Deployment == nil) || (existing.Deployment != nil && input.Deployment != nil && *existing.Deployment == *input.Deployment)
+	if existing.ManifestSHA256 != input.ManifestSHA256 || !sameDeployment {
+		return false, executionError(core.CodeDeploymentConflict, "address already contains a different deployment", nil)
+	}
+	return true, nil
+}
+
 func executionError(code core.ErrorCode, message string, cause error) error {
 	return &core.ExecutionError{Code: code, Message: message, Cause: cause}
 }
 func readFile(ctx context.Context, path string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("record file must be regular: %s", path)
 	}
 	data, err := os.ReadFile(path)
 	if err == nil {

@@ -33,7 +33,7 @@ func TestDefaultPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	address, err := rt.Engine.Deploy(context.Background(), c)
+	address, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestReplaceRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := rt.Engine.Deploy(context.Background(), c)
+	a, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestDefaultPresetLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := rt.Engine.Deploy(context.Background(), c)
+	a, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}

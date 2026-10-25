@@ -179,7 +179,7 @@ go build .
 - `ExecuteResult` 是调用结果的依据。`GetGasConsumed` / `GetLastEvents` 仅表示最近结束的调用，不能用于关联并发请求。
 - 返回值与事件中的通用 JSON 数值使用 `json.Number`，保留 int64/uint64 精度；使用者应通过 `Int64` / `strconv.ParseUint` 等精确解析。响应只允许一个 JSON 值。
 - ProcessRunner 的 stdout、stderr 各限制为 1 MiB，超限取消直接进程；管道收尾最多额外等待 100ms。此限制不等同于进程树、内存、文件或网络隔离。
-- 构建使用独立临时目录，成功后原子发布绝对路径产物，单次 `go build` 默认超时 30s。缓存指纹包含 VM 的 Go 版本和平台；完整产物清单与篡改校验仍待实现。
+- 构建使用独立临时目录，二进制与版本化清单一起原子发布；实际工具链探测与构建共用默认 30s 超时。缓存指纹覆盖实际工具链、平台、生成代码与元数据，缓存、部署、加载和执行前校验内容摘要。详见 [产物清单](docs/artifact_manifest.md)。
 - `NewVMEngineWithRunner(config, runner)` 可注入执行后端，传入 nil 等价于现有 `NewVMEngine`。自定义后端需要遵守同样的数值、Gas、事件与资源契约。
 
 
@@ -187,7 +187,7 @@ go build .
 
 设置 `VMConfig.RequireDeterminism=true` 启用 `go-deterministic-v1`。它强制安全审查，禁止机器时间、浮点/指针观测和直接输出，仅开放受限值计算及链上下文 API；严格模式拒绝没有匹配策略标签的旧产物。默认使用开发模式，确定性策略需显式启用。
 
-详见 [确定性源码策略](docs/deterministic_execution.md)。该策略不等同于完整沙箱或完整共识执行规范；工具链固定、产物摘要与确定性部署地址仍后置。
+详见 [确定性源码策略](docs/deterministic_execution.md)。该策略不等同于完整沙箱或完整共识执行规范；工具链固定、产物摘要及[确定性部署地址](docs/deployment.md)已实现；来源认证和状态事务仍后置。
 
 
 ## ABI 与调用协议

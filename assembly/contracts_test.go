@@ -72,7 +72,7 @@ func TestReviewerNeedsNoAllowlistMethods(t *testing.T) {
 func TestCustomDeterminismAndIndependentStore(t *testing.T) {
 	cfg := assembly.DefaultConfig(core.VMConfig{RequireDeterminism: true, ContractStorageDir: t.TempDir()})
 	cfg.Plugins["policy"] = map[string]any{"use": "test/custom-deterministic", "deps": map[string]any{"reviewer": "security"}}
-	// The store has no deployment, address generation, ABI-query or Gas methods.
+	// Storage exposes independent read/write/create capabilities, without deployment policy.
 	cfg.Plugins["contracts"] = map[string]any{"use": "test/memory-store"}
 	rt, err := assembly.Build(context.Background(), cfg)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestCustomDeterminismAndIndependentStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := c.ExecutablePath
-	a, err := rt.Engine.Deploy(context.Background(), c)
+	a, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,4 +129,21 @@ func (s *memoryStore) Get(ctx context.Context, a string) (*core.CompiledContract
 		return nil, fmt.Errorf("contract not found: %s", a)
 	}
 	return &c, nil
+}
+
+func (s *memoryStore) Create(ctx context.Context, address string, c *core.CompiledContract) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.records[address]; ok {
+		sameDeployment := (existing.Deployment == nil && c.Deployment == nil) || (existing.Deployment != nil && c.Deployment != nil && *existing.Deployment == *c.Deployment)
+		if existing.ManifestSHA256 != c.ManifestSHA256 || !sameDeployment {
+			return &core.ExecutionError{Code: core.CodeDeploymentConflict, Message: "already exists"}
+		}
+		return nil
+	}
+	s.records[address] = *c
+	return nil
 }

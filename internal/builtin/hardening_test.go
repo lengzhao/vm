@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -38,7 +39,7 @@ func TestRunnerPreservesLargeNumbers(t *testing.T) {
 	if err := os.WriteFile(p, []byte("#!/bin/sh\nprintf '%s' '"+payload+"'\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewProcessRunner(5*time.Second).Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}, CallRequest{Function: "F"})
+	r, err := NewProcessRunner(5*time.Second).Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func TestCallContextIsNotModified(t *testing.T) {
 func TestRunnerRejectsMultipleResponses(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "contract")
 	os.WriteFile(p, []byte("#!/bin/sh\necho '{\"version\":1,\"ok\":true,\"result\":1} {\"ok\":true,\"result\":2}'\n"), 0755)
-	_, err := NewProcessRunner(5*time.Second).Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}, CallRequest{Function: "F"})
+	_, err := NewProcessRunner(5*time.Second).Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
 	if err == nil {
 		t.Fatal("multiple responses accepted")
 	}
@@ -133,7 +134,7 @@ func TestRunnerBoundsOutput(t *testing.T) {
 				redirect = " >&2"
 			}
 			os.WriteFile(p, []byte("#!/bin/sh\nwhile :; do printf '"+strings.Repeat("x", 4096)+"'"+redirect+"; done\n"), 0755)
-			r, err := NewProcessRunner(3*time.Second).Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}, CallRequest{Function: "F"})
+			r, err := NewProcessRunner(3*time.Second).Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
 			if err == nil || !strings.Contains(err.Error(), "output limit") {
 				t.Fatalf("expected output limit, got %.200v", err)
 			}
@@ -171,7 +172,8 @@ func mustWorkingDir(t *testing.T) string {
 }
 
 func TestConcurrentCompilationPublishesCompleteArtifact(t *testing.T) {
-	c := NewContractCompilerWithOptions(t.TempDir(), true)
+	cacheDir := t.TempDir()
+	c := NewContractCompilerWithOptions(cacheDir, true)
 	start := make(chan struct{})
 	done := make(chan error, 4)
 	for i := 0; i < 4; i++ {
@@ -179,6 +181,10 @@ func TestConcurrentCompilationPublishesCompleteArtifact(t *testing.T) {
 			<-start
 			k, err := c.Compile(`package main;func F() int{return 123}`)
 			if err == nil {
+				if k.Manifest == nil || k.ManifestSHA256 == "" {
+					done <- fmt.Errorf("incomplete published manifest")
+					return
+				}
 				_, err = NewProcessRunner(5*time.Second).Run(context.Background(), k, CallRequest{Function: "F"})
 			}
 			done <- err
@@ -189,6 +195,13 @@ func TestConcurrentCompilationPublishesCompleteArtifact(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Error(err)
 		}
+	}
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || !entries[0].IsDir() || !strings.HasPrefix(entries[0].Name(), "contract_") {
+		t.Fatalf("incomplete or duplicate cache publication: %v", entries)
 	}
 }
 
@@ -290,7 +303,7 @@ func TestRunnerDeadlineBoundsInheritedPipes(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "contract")
 	os.WriteFile(p, []byte("#!/bin/sh\n/bin/sleep 5 &\nwait\n"), 0755)
 	begin := time.Now()
-	_, err := NewProcessRunner(50*time.Millisecond).Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}, CallRequest{Function: "F"})
+	_, err := NewProcessRunner(50*time.Millisecond).Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
 	if err == nil {
 		t.Fatal("expected timeout")
 	}

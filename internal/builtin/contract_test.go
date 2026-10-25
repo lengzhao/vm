@@ -36,6 +36,7 @@ func TestDeployAndLoadContract(t *testing.T) {
 		SourceHash:  "test_hash",
 	}
 
+	sealedTestArtifact(t, contract)
 	address, err := contractManager.Deploy(contract)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -73,6 +74,7 @@ func TestGetContractABI(t *testing.T) {
 		SourceHash:  "test_hash",
 	}
 
+	sealedTestArtifact(t, contract)
 	address, err := contractManager.Deploy(contract)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -107,6 +109,7 @@ func TestStoreAndLoadContract(t *testing.T) {
 		SourceHash:  "test_hash",
 	}
 
+	sealedTestArtifact(t, contract)
 	address := "test_contract_address"
 	if err := contractManager.StoreContract(contract, address); err != nil {
 		t.Fatalf("Expected no error, got %v", err)

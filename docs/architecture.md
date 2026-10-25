@@ -87,7 +87,6 @@ flowchart TD
 vm/
 ├── vm.go / types.go    # 兼容 API 与 core 类型别名
 ├── core/               # 公共类型和能力接口
-├── cap/                # 插件扩展能力名称
 ├── plugins/            # ABI / 策略 / Gas / 编译 / 存储 / Runner / Engine
 ├── assembly/           # PluginKit 构建、默认图与生命周期
 ├── internal/           # compiler/security/policy/gas/abigen/storage/deployment/process/engine

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/artifact"
 	"github.com/lengzhao/vm/internal/callcontext"
 	"io"
 	"os"
@@ -50,9 +51,18 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *core.CompiledContract
 	if contract.ProtocolVersion != core.ProtocolVersion {
 		return nil, executionError(core.CodeUnsupportedVersion, "unsupported artifact protocol; recompile and deploy", nil)
 	}
-	if _, err := os.Stat(contract.ExecutablePath); err != nil {
-		return nil, executionError(core.CodeInvalidRequest, "executable not found: "+err.Error(), err)
+	runCtx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+	if err := artifact.Validate(runCtx, contract); err != nil {
+		if interrupted := interruption(runCtx); interrupted != nil {
+			return nil, interrupted
+		}
+		return nil, err
 	}
+	if err := artifact.ValidateNativeRules(contract); err != nil {
+		return nil, err
+	}
+
 	if req.Function == "" {
 		return nil, executionError(core.CodeInvalidRequest, "function name cannot be empty", nil)
 	}
@@ -70,8 +80,6 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *core.CompiledContract
 	if len(payload) > 1<<20 {
 		return nil, executionError(core.CodeInvalidRequest, "request exceeds 1 MiB", nil)
 	}
-	runCtx, cancel := context.WithTimeout(ctx, r.timeout)
-	defer cancel()
 	outputCtx, cancelOutput := context.WithCancel(runCtx)
 	defer cancelOutput()
 	cmd := exec.CommandContext(outputCtx, contract.ExecutablePath)

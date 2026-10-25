@@ -6,6 +6,7 @@ import (
 	"github.com/lengzhao/vm/core"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ type writer struct {
 	artifact *core.CompiledContract
 }
 
-func (w *writer) Put(ctx context.Context, a string, c *core.CompiledContract) error {
+func (w *writer) Create(ctx context.Context, a string, c *core.CompiledContract) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -31,7 +32,7 @@ func (v validator) ValidateArtifact(ctx context.Context, c *core.CompiledContrac
 	}
 	return v.err
 }
-func TestDeploymentOnlyNeedsWriter(t *testing.T) {
+func TestDeploymentOnlyNeedsCreator(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "artifact")
 	if err := os.WriteFile(p, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
@@ -41,8 +42,8 @@ func TestDeploymentOnlyNeedsWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &core.CompiledContract{ExecutablePath: p, SourceHash: "hash"}
-	address, err := d.Deploy(context.Background(), c)
+	c := &core.CompiledContract{ExecutablePath: p, SourceHash: "hash", ManifestSHA256: strings.Repeat("a", 64)}
+	address, err := d.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestRejectBeforeWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Deploy(context.Background(), &core.CompiledContract{}); !errors.Is(err, denied) {
+	if _, err := d.Deploy(context.Background(), core.DeploymentRequest{Contract: &core.CompiledContract{}, Input: core.DeploymentInput{ChainID: "chain", Sender: "alice"}}); !errors.Is(err, denied) {
 		t.Fatal(err)
 	}
 	if w.artifact != nil {
@@ -68,7 +69,7 @@ func TestRejectBeforeWriting(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := d.Deploy(ctx, &core.CompiledContract{}); !errors.Is(err, context.Canceled) {
+	if _, err := d.Deploy(ctx, core.DeploymentRequest{Contract: &core.CompiledContract{}}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }

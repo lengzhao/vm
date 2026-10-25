@@ -85,7 +85,7 @@ func TestProtocolRejectsUnknownRequestVersion(t *testing.T) {
 func TestProtocolRejectsUnversionedResponse(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "contract")
 	os.WriteFile(p, []byte("#!/bin/sh\necho '{\"ok\":true,\"result\":7}'\n"), 0755)
-	_, err := NewProcessRunner(time.Second).Run(context.Background(), &CompiledContract{ExecutablePath: p, ProtocolVersion: ProtocolVersion}, CallRequest{Function: "F"})
+	_, err := NewProcessRunner(time.Second).Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ExecutablePath: p, ProtocolVersion: ProtocolVersion}), CallRequest{Function: "F"})
 	requireCode(t, err, CodeUnsupportedVersion)
 }
 
@@ -139,10 +139,13 @@ func TestABIPredeclaredNamesCannotShadowEntry(t *testing.T) {
 }
 
 func TestProtocolRequiresResponseFields(t *testing.T) {
+	// Validate response shape independently of process-startup scheduling.
+	// Dedicated timeout/cancellation tests retain their short latency budgets.
+	runner := NewProcessRunner(5 * time.Second)
 	for _, payload := range []string{`{"version":1,"ok":true,"result":7}`, `{"version":1,"gas":11,"code":"CONTRACT_ERROR","error":"failed"}`, `{"version":1,"ok":false,"gas":11,"code":"CONTRACT_ERROR","error":"failed","result":7}`} {
 		p := filepath.Join(t.TempDir(), "contract")
 		os.WriteFile(p, []byte("#!/bin/sh\necho '"+payload+"'\n"), 0755)
-		_, err := NewProcessRunner(time.Second).Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}, CallRequest{Function: "F"})
+		_, err := runner.Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
 		requireCode(t, err, CodeInvalidResponse)
 	}
 }

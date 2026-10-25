@@ -13,7 +13,7 @@ Create assembly/assembly_test.go：覆盖默认编译部署执行、第三方 Ru
 Run `GOCACHE=/private/tmp/vm-go-cache go test ./assembly`，确认新 API 缺失。
 
 ### Task 2: 抽取 core 与能力接口
-Create core/types.go、cap/cap.go；迁移现有实现到内部实现包并以类型别名保持身份一致。
+在 core 中定义公共类型与能力接口；迁移现有实现到内部实现包。
 将原有白盒测试随实现迁移，保留测试内容及已修改的源码。根包生成类型别名与兼容函数。
 
 ### Task 3: 全能力依赖注入
@@ -34,7 +34,7 @@ Run `GOCACHE=/private/tmp/vm-go-cache go test ./...`、`go test -race ./...`、`
 
 ## 完成与验证
 
-- 已实现全部能力插件、core/cap 契约、默认配置图、严格 YAML、生命周期与兼容 API。
+- 已实现全部能力插件、core 契约、默认配置图、严格 YAML、生命周期与兼容 API。
 - 原有白盒测试随实现原样迁移，未删除或修改测试用例；新增装配/扩展/兼容测试。
 - 代码审查发现并修复：自定义 Engine 的 Stop() 兼容、构造期过早使用 MeterFactory；均已先复现失败后修复。
 - `GOCACHE=/private/tmp/vm-go-cache go test -p 1 -timeout 5m ./...` 通过。

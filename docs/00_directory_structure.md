@@ -11,6 +11,8 @@ docs/
 ├── 00_directory_structure.md
 ├── architecture.md
 ├── plugins.md                   # PluginKit 配置、扩展与生命周期
+├── artifact_manifest.md         # 产物清单、版本与摘要校验
+├── deployment.md                # 确定性部署、输入与冲突规则
 ├── modular_architecture_design.md
 ├── default_library.md
 ├── host_runtime.md              # Host Runtime MVP 设计
@@ -36,7 +38,7 @@ docs/
 ```text
 vm/
 ├── vm.go / types.go # 兼容 API
-├── core/ / cap/     # 公共契约
+├── core/            # 公共类型与能力契约
 ├── plugins/         # Config/Deps 工厂与注册
 ├── assembly/        # 配置与生命周期
 ├── internal/          # 按能力分包；compat 适配；builtin 仅历史回归测试

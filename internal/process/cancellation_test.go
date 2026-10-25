@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/artifact/artifacttest"
 	"github.com/lengzhao/vm/internal/callcontext"
 	"os"
 	"path/filepath"
@@ -54,7 +55,7 @@ func TestCanceledRunAvoidsCallbacks(t *testing.T) {
 			host := &observedHost{}
 			ctx = callcontext.WithCallContext(ctx, &core.CallContext{Host: host})
 			calls := 0
-			_, err := New(time.Second).Run(ctx, &core.CompiledContract{ExecutablePath: path, ProtocolVersion: core.ProtocolVersion}, core.CallRequest{Function: "Run", Args: []any{observedArgument{calls: &calls}}})
+			_, err := New(time.Second).Run(ctx, artifacttest.Seal(t, &core.CompiledContract{ExecutablePath: path, ProtocolVersion: core.ProtocolVersion}), core.CallRequest{Function: "Run", Args: []any{observedArgument{calls: &calls}}})
 			var ee *core.ExecutionError
 			if !errors.As(err, &ee) || ee.Code != want || !errors.Is(err, cause) {
 				t.Fatalf("unexpected cancellation: %v", err)
@@ -75,7 +76,7 @@ func TestCancellationDuringMarshalAvoidsHostCallbacks(t *testing.T) {
 	host := &observedHost{}
 	ctx = callcontext.WithCallContext(ctx, &core.CallContext{Host: host})
 	calls := 0
-	_, err := New(time.Second).Run(ctx, &core.CompiledContract{ExecutablePath: path, ProtocolVersion: core.ProtocolVersion}, core.CallRequest{Function: "Run", Args: []any{observedArgument{calls: &calls, cancel: cancel}}})
+	_, err := New(time.Second).Run(ctx, artifacttest.Seal(t, &core.CompiledContract{ExecutablePath: path, ProtocolVersion: core.ProtocolVersion}), core.CallRequest{Function: "Run", Args: []any{observedArgument{calls: &calls, cancel: cancel}}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("unexpected error: %v", err)
 	}

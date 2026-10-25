@@ -115,7 +115,7 @@ func TestInjectorChangesArtifactAndCache(t *testing.T) {
 	if first.SourceHash == second.SourceHash || first.ExecutablePath == second.ExecutablePath {
 		t.Fatal("different instrumentation reused cached artifact")
 	}
-	address, err := modified.Engine.Deploy(context.Background(), second)
+	address, err := modified.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: second, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestInjectedMetersAreIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := rt.Engine.Deploy(context.Background(), c)
+	a, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestMeterFactoryStartsBeforeUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := rt.Engine.Deploy(context.Background(), c)
+	a, err := rt.Engine.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: core.DeploymentInput{ChainID: "test-chain", Sender: "alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}

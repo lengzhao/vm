@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/artifact"
 )
 
 // ArtifactOptions separates accepted policy identities from required guarantees.
@@ -56,5 +57,8 @@ func (v *ArtifactValidator) ValidateArtifact(ctx context.Context, a *core.Compil
 	if v.required.Deterministic && !a.Guarantees.Deterministic {
 		return fmt.Errorf("artifact does not declare required deterministic guarantee")
 	}
-	return nil
+	if err := artifact.Validate(ctx, a); err != nil {
+		return err
+	}
+	return artifact.ValidateNativeRules(a)
 }

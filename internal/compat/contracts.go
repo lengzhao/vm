@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/lengzhao/vm/abi"
 	"github.com/lengzhao/vm/core"
-	"github.com/lengzhao/vm/internal/deployment"
+	"github.com/lengzhao/vm/internal/artifact"
 )
 
 type ContractManager interface {
@@ -57,16 +57,7 @@ func (m *Manager) StoreContract(c *core.CompiledContract, a string) error {
 	return nil
 }
 func (m *Manager) Deploy(c *core.CompiledContract) (string, error) {
-	var a string
-	var err error
-	// The original raw manager also accepted metadata-only test artifacts. Keep
-	// that behavior in the adapter; the executable deployer remains strict.
-	if c != nil && c.ExecutablePath == "" {
-		a = deployment.NewAddress(c.SourceHash)
-		err = m.store.Put(context.Background(), a, c)
-	} else {
-		a, err = m.deployer.Deploy(context.Background(), c)
-	}
+	a, err := m.deployer.Deploy(context.Background(), core.DeploymentRequest{Contract: c, Input: LocalDeploymentInput()})
 	if err != nil {
 		return "", err
 	}
@@ -74,6 +65,7 @@ func (m *Manager) Deploy(c *core.CompiledContract) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	c.Deployment = loaded.Deployment
 	c.Address = a
 	c.ExecutablePath = loaded.ExecutablePath
 	return a, nil
@@ -81,6 +73,14 @@ func (m *Manager) Deploy(c *core.CompiledContract) (string, error) {
 
 type AcceptArtifacts struct{}
 
-func (AcceptArtifacts) ValidateArtifact(ctx context.Context, _ *core.CompiledContract) error {
-	return ctx.Err()
+func (AcceptArtifacts) ValidateArtifact(ctx context.Context, c *core.CompiledContract) error {
+	if err := artifact.Validate(ctx, c); err != nil {
+		return err
+	}
+	return artifact.ValidateNativeRules(c)
+}
+
+// LocalDeploymentInput is the deterministic domain for legacy local-only entry points.
+func LocalDeploymentInput() core.DeploymentInput {
+	return core.DeploymentInput{ChainID: "vm-local-v1", Sender: "local"}
 }

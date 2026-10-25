@@ -161,7 +161,7 @@ func TestDeploy(t *testing.T) {
 		SourceHash:     "test_hash",
 	}
 
-	address, err := engine.Deploy(contract)
+	address, err := engine.Deploy(sealedTestArtifact(t, contract))
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

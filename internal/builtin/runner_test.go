@@ -107,7 +107,7 @@ func TestProcessRunnerInvalidJSONResponse(t *testing.T) {
 	}
 
 	runner := NewProcessRunner(time.Second)
-	result, err := runner.Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: execPath}, CallRequest{
+	result, err := runner.Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: execPath}), CallRequest{
 		Function: "Any",
 	})
 	if err == nil {
@@ -127,7 +127,7 @@ func TestProcessRunnerNonZeroExitWithErrorJSON(t *testing.T) {
 	}
 
 	runner := NewProcessRunner(time.Second)
-	result, err := runner.Run(context.Background(), &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: execPath}, CallRequest{
+	result, err := runner.Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: execPath}), CallRequest{
 		Function: "Any",
 	})
 	if err == nil {

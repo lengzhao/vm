@@ -7,9 +7,15 @@ import (
 
 type ContractCompiler = compat.ContractCompiler
 type CompiledContract = core.CompiledContract
+type ArtifactManifest = core.ArtifactManifest
+type ArtifactBuild = core.ArtifactBuild
+type ArtifactToolchain = core.ArtifactToolchain
 type ContractManager = compat.ContractManager
 type ContractStatus = core.ContractStatus
 type ContractMetadata = core.ContractMetadata
+type DeploymentInput = core.DeploymentInput
+type DeploymentRequest = core.DeploymentRequest
+type DeploymentRecord = core.DeploymentRecord
 type VMConfig = core.VMConfig
 type ExecuteResult = core.ExecuteResult
 type EstimateOptions = core.EstimateOptions
@@ -37,7 +43,10 @@ const ContractStatusUnknown = core.ContractStatusUnknown
 const ContractStatusDeployed = core.ContractStatusDeployed
 const ContractStatusSuspended = core.ContractStatusSuspended
 const ContractStatusDestroyed = core.ContractStatusDestroyed
+const DeploymentVersion = core.DeploymentVersion
+const CodeDeploymentConflict = core.CodeDeploymentConflict
 const ProtocolVersion = core.ProtocolVersion
+const CodeArtifactIntegrity = core.CodeArtifactIntegrity
 const CodeInvalidRequest = core.CodeInvalidRequest
 const CodeInvalidArguments = core.CodeInvalidArguments
 const CodeUnknownFunction = core.CodeUnknownFunction

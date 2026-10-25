@@ -2,6 +2,7 @@ package vm_test
 
 import (
 	"context"
+	"github.com/lengzhao/vm/internal/artifact/artifacttest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,6 +70,8 @@ func TestLegacyConstructorsAcceptTheSameDevelopmentArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	compiled.SourcePolicy = "foreign-development-v2"
+	// Simulate a trusted producer using a foreign policy, with matching integrity metadata.
+	artifacttest.Seal(t, compiled)
 	for _, tt := range []struct {
 		name string
 		new  func(vm.VMConfig) *vm.VMEngine

@@ -15,6 +15,13 @@ type ContractReader interface {
 type ContractWriter interface {
 	Put(context.Context, string, *CompiledContract) error
 }
+
+// ContractCreator atomically publishes a new address, or accepts an identical retry.
+// A different or damaged existing record must never be overwritten.
+type ContractCreator interface {
+	Create(context.Context, string, *CompiledContract) error
+}
+
 type ContractStore interface {
 	ContractReader
 	ContractWriter
@@ -22,7 +29,7 @@ type ContractStore interface {
 
 // ContractDeployer owns address assignment and deployment acceptance rules.
 type ContractDeployer interface {
-	Deploy(context.Context, *CompiledContract) (string, error)
+	Deploy(context.Context, DeploymentRequest) (string, error)
 }
 
 // ContractStatus 合约状态
@@ -37,12 +44,14 @@ const (
 
 // ContractMetadata 合约元数据
 type ContractMetadata struct {
-	Address         string           `json:"address"`
-	SourcePolicy    string           `json:"source_policy,omitempty"`
-	Guarantees      PolicyGuarantees `json:"guarantees,omitempty"`
-	ProtocolVersion int              `json:"protocol_version"`
-	SourceHash      string           `json:"source_hash"`
-	DeployTime      time.Time        `json:"deploy_time"`
-	Status          ContractStatus   `json:"status"`
-	StoragePath     string           `json:"storage_path"`
+	Deployment      *DeploymentRecord `json:"deployment,omitempty"`
+	ManifestSHA256  string            `json:"manifest_sha256"`
+	Address         string            `json:"address"`
+	SourcePolicy    string            `json:"source_policy,omitempty"`
+	Guarantees      PolicyGuarantees  `json:"guarantees,omitempty"`
+	ProtocolVersion int               `json:"protocol_version"`
+	SourceHash      string            `json:"source_hash"`
+	DeployTime      time.Time         `json:"deploy_time"`
+	Status          ContractStatus    `json:"status"`
+	StoragePath     string            `json:"storage_path"`
 }

@@ -13,6 +13,9 @@ type ContractCompiler interface {
 
 // CompiledContract 编译后的合约
 type CompiledContract struct {
+	Deployment      *DeploymentRecord
+	ManifestSHA256  string
+	Manifest        *ArtifactManifest
 	ExecutablePath  string
 	SourcePolicy    string
 	Guarantees      PolicyGuarantees

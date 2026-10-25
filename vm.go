@@ -1,4 +1,4 @@
-// Package vm is the compatibility API. New plugins use only core/cap contracts.
+// Package vm is the compatibility API. New plugins use only core contracts.
 package vm
 
 import (
@@ -94,18 +94,31 @@ func (e *VMEngine) GenerateABI(source string) (*abi.ABI, error) {
 	return e.Engine.GenerateABI(context.Background(), source)
 }
 func (e *VMEngine) Deploy(c *CompiledContract) (string, error) {
-	a, err := e.Engine.Deploy(context.Background(), c)
-	if err != nil {
-		return "", err
-	}
-	loaded, err := e.Engine.Get(context.Background(), a)
-	if err != nil {
-		return "", err
-	}
-	c.Address = a
-	c.ExecutablePath = loaded.ExecutablePath
-	return a, nil
+	return e.DeployWithInput(c, compat.LocalDeploymentInput())
 }
+func (e *VMEngine) DeployWithInput(c *CompiledContract, input DeploymentInput) (string, error) {
+	return e.DeployContext(context.Background(), c, input)
+}
+func (e *VMEngine) DeployContext(ctx context.Context, c *CompiledContract, input DeploymentInput) (string, error) {
+	address, err := e.Engine.Deploy(ctx, core.DeploymentRequest{Contract: c, Input: input})
+	if err != nil {
+		return "", err
+	}
+	loaded, err := e.Engine.Get(ctx, address)
+	if err != nil {
+		return "", err
+	}
+	c.Address = address
+	c.ExecutablePath = loaded.ExecutablePath
+	c.Deployment = loaded.Deployment
+	return address, nil
+}
+
+// DeriveDeploymentAddress predicts the versioned address without accessing storage.
+func DeriveDeploymentAddress(input DeploymentInput, manifestSHA256 string) (string, error) {
+	return deployment.DeriveAddress(input, manifestSHA256)
+}
+
 func (e *VMEngine) Execute(address, function string, args ...interface{}) ([]byte, error) {
 	out, err := e.ExecuteWithContext(address, function, nil, args...)
 	if err != nil {
@@ -201,7 +214,7 @@ func NewContractManager(dir string, _ SecurityReviewer, _ ABIGenerator) Contract
 	if err != nil {
 		panic(err)
 	}
-	d, err := deployment.New(s, compat.AcceptArtifacts{})
+	d, err := deployment.New(s.(core.ContractCreator), compat.AcceptArtifacts{})
 	if err != nil {
 		panic(err)
 	}

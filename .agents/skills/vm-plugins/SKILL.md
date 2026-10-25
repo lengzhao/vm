@@ -9,13 +9,13 @@ description: Use when adding, changing, integrating, or reviewing PluginKit-base
 
 ## 开始工作
 
-遵守仓库 AGENTS.md 的 CodeGraph 初始化与定位要求。先看本次涉及的 core/cap 契约、实际调用方、插件 Config/Deps 和配置图；接口职责与现状详见 [插件指南](../../../docs/plugins.md)。
+遵守仓库 AGENTS.md 的 CodeGraph 初始化与定位要求。先看本次涉及的 core 契约、实际调用方、插件 Config/Deps 和配置图；接口职责与现状详见 [插件指南](../../../docs/plugins.md)。
 
 ## 分层与接口
 
 | 层 | 职责与依赖 |
 | --- | --- |
-| core / cap | 稳定数据和最小能力契约，不依赖实现或插件工厂 |
+| core | 稳定数据和最小能力契约，不依赖实现或插件工厂 |
 | internal/<能力> | 实现该能力；只依赖契约和确有必要的共享领域工具 |
 | plugins/<能力> | Config/Deps 构造及 PluginKit 注册，依赖对应实现 |
 | assembly | 配置读取、PluginKit 构建及可选 Start(ctx)/Stop(ctx) |

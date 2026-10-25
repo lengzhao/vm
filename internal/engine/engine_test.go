@@ -19,7 +19,7 @@ func (*depsStub) Generate(string) (*abi.ABI, error) { return nil, nil }
 func (*depsStub) Compile(ctx context.Context, _ string) (*core.CompiledContract, error) {
 	return nil, ctx.Err()
 }
-func (*depsStub) Deploy(ctx context.Context, _ *core.CompiledContract) (string, error) {
+func (*depsStub) Deploy(ctx context.Context, _ core.DeploymentRequest) (string, error) {
 	return "", ctx.Err()
 }
 func (d *depsStub) Get(ctx context.Context, _ string) (*core.CompiledContract, error) {

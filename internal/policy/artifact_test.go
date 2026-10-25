@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/artifact/artifacttest"
 	"testing"
 )
 
@@ -18,11 +19,12 @@ func TestArtifactGuarantees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &core.CompiledContract{SourcePolicy: "custom-v2"}
+	a := &core.CompiledContract{ProtocolVersion: core.ProtocolVersion, SourcePolicy: "custom-v2"}
 	if v.ValidateArtifact(context.Background(), a) == nil {
 		t.Fatal("missing guarantee accepted")
 	}
 	a.Guarantees.Deterministic = true
+	artifacttest.Seal(t, a)
 	if err := v.ValidateArtifact(context.Background(), a); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +52,7 @@ func TestArtifactOptions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := v.ValidateArtifact(context.Background(), &core.CompiledContract{SourcePolicy: plainPolicy{}.ID()}); err != nil {
+		if err := v.ValidateArtifact(context.Background(), artifacttest.Seal(t, &core.CompiledContract{ProtocolVersion: core.ProtocolVersion, SourcePolicy: plainPolicy{}.ID()})); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -59,7 +61,7 @@ func TestArtifactOptions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v.ValidateArtifact(context.Background(), &core.CompiledContract{SourcePolicy: plainPolicy{}.ID()}) == nil {
+		if v.ValidateArtifact(context.Background(), artifacttest.Seal(t, &core.CompiledContract{ProtocolVersion: core.ProtocolVersion, SourcePolicy: plainPolicy{}.ID()})) == nil {
 			t.Fatal("missing guarantee accepted")
 		}
 	})
@@ -77,7 +79,7 @@ func TestArtifactOptions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := v.ValidateArtifact(context.Background(), &core.CompiledContract{SourcePolicy: "legacy"}); err != nil {
+		if err := v.ValidateArtifact(context.Background(), artifacttest.Seal(t, &core.CompiledContract{ProtocolVersion: core.ProtocolVersion, SourcePolicy: "legacy"})); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -86,7 +88,7 @@ func TestArtifactOptions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := v.ValidateArtifact(context.Background(), &core.CompiledContract{SourcePolicy: "custom-v3", Guarantees: core.PolicyGuarantees{Deterministic: true}}); err != nil {
+		if err := v.ValidateArtifact(context.Background(), artifacttest.Seal(t, &core.CompiledContract{ProtocolVersion: core.ProtocolVersion, SourcePolicy: "custom-v3", Guarantees: core.PolicyGuarantees{Deterministic: true}})); err != nil {
 			t.Fatal(err)
 		}
 	})

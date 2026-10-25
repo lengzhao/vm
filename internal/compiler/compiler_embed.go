@@ -9,7 +9,7 @@ var embeddedContractAPISource = contractapi.Source
 var embeddedContractAPIGasSource = contractapi.GasSource
 var embeddedContractAPIProtocolSource = contractapi.ProtocolSource
 
-const compilerBuildID = "pipeline-v9-policy-guarantees"
+const compilerBuildID = "pipeline-v11-artifact-manifest"
 
 //go:embed entry.go.tmpl
 var contractEntryTemplate string

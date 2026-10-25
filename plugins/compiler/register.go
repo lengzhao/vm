@@ -10,6 +10,8 @@ import (
 )
 
 type Config struct {
+	GoBinary           string `json:"goBinary"`
+	GoVersion          string `json:"goVersion"`
 	OutputDir          string `json:"outputDir"`
 	BuildTimeout       string `json:"buildTimeout"`
 	RequireDeterminism bool   `json:"requireDeterminism"`
@@ -33,6 +35,6 @@ func New(c Config, d Deps) (core.ContractCompiler, error) {
 			return nil, fmt.Errorf("buildTimeout must be positive")
 		}
 	}
-	return implementation.New(implementation.Options{OutputDir: c.OutputDir, BuildTimeout: timeout, RequireDeterminism: c.RequireDeterminism}, implementation.Deps{Policy: d.Policy, ABI: d.ABI, Injector: d.Injector, Profiler: d.Profiler})
+	return implementation.New(implementation.Options{GoBinary: c.GoBinary, GoVersion: c.GoVersion, OutputDir: c.OutputDir, BuildTimeout: timeout, RequireDeterminism: c.RequireDeterminism}, implementation.Deps{Policy: d.Policy, ABI: d.ABI, Injector: d.Injector, Profiler: d.Profiler})
 }
 func init() { pluginkit.Register("compiler/go", New) }

@@ -40,7 +40,7 @@ type Deps struct {
 
 - `Compile(ctx, source)`：向编译器传递调用方上下文。
 - `GenerateABI(ctx, source)`：源码策略审查后生成 ABI。
-- `Deploy(ctx, artifact)`：委托部署插件。部署插件校验产物策略，分配地址后调用存储的 Put；不修改调用方产物。
+- `Deploy(ctx, DeploymentRequest)`：委托部署插件。部署插件校验产物策略，按显式输入派生确定性地址后调用存储的 Create；不修改调用方产物。
 - `Get(ctx, address)`：委托只读存储能力，返回完整产物。
 - `Execute(ctx, request)`：读取产物，调用 ArtifactValidator，解析 Host 为独立值快照，创建本次 Gas 计量器，向 Runner 传入派生超时上下文，返回 Data/Events/GasConsumed。
 - `EstimateGas(ctx, address, function, opts)`：读取并校验产物，委托 GasEstimator；可选 DryRun 使用同一执行路径。

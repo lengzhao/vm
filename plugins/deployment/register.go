@@ -9,7 +9,7 @@ import (
 
 type Config struct{}
 type Deps struct {
-	Store     core.ContractWriter    `json:"store"`
+	Store     core.ContractCreator   `json:"store"`
 	Validator core.ArtifactValidator `json:"validator"`
 }
 
