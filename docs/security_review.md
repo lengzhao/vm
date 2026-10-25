@@ -74,3 +74,7 @@
 1. 标记合约发布失败
 2. 返回详细的错误信息，包括违反的安全规则
 3. 阻止合约进入编译和执行阶段
+
+## 可选确定性 profile
+
+`RequireDeterminism` 对本规范的开发模式白名单进一步收紧，启用时即使 EnableSecurityChecks=false 也不会跳过安全审查。开发模式仍可使用 time/fmt；确定性模式拒绝这些包，并限制数值、指针与标准库符号。参见 [确定性源码策略](deterministic_execution.md)。

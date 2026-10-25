@@ -30,8 +30,8 @@ func main() {
 package main
 
 import (
-	"fmt"
-	"strconv"
+ "github.com/lengzhao/vm/contractapi"
+ "strconv"
 )
 
 func Add(a, b int) int {
@@ -43,7 +43,7 @@ func GetBalance() int {
 }
 
 func Transfer(from, to string, amount int) bool {
-	fmt.Printf("Transfering %d from %s to %s\n", amount, from, to)
+	contractapi.Log("Transfer", "amount", amount, "from", from, "to", to)
 	return true
 }
 

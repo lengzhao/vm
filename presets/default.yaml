@@ -1,0 +1,49 @@
+# Local development VM; ProcessRunner is not an OS sandbox.
+root: engine
+plugins:
+  security:
+    use: security/go
+  abi:
+    use: abi/go
+  policy:
+    use: policy/go
+    config: {enableSecurity: true, deterministic: false}
+    deps: {reviewer: security}
+  validator:
+    use: policy/artifact
+    deps: {policy: policy}
+  deployer:
+    use: deployment/default
+    deps: {store: contracts, validator: validator}
+  injector:
+    use: gas/injector
+  profiler:
+    use: gas/profiler
+  meters:
+    use: gas/meters
+  compiler:
+    use: compiler/go
+    config: {outputDir: ./contracts, buildTimeout: 30s, requireDeterminism: false}
+    deps: {policy: policy, abi: abi, injector: injector, profiler: profiler}
+  contracts:
+    use: storage/filesystem
+    config: {directory: ./contracts}
+  runner:
+    use: runner/process
+    config: {timeout: 30s}
+  engine:
+    use: engine/default
+    config:
+      executionTimeout: 30s
+      enableGasMetering: true
+      maxGasLimit: 1000000
+    deps:
+      policy: policy
+      abi: abi
+      compiler: compiler
+      contracts: contracts
+      runner: runner
+      meters: meters
+      estimator: profiler
+      deployer: deployer
+      validator: validator

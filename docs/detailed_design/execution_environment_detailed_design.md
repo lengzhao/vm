@@ -4,7 +4,7 @@
 
 当前执行环境实现为 **`Runner`**，不是历史文档中的复杂 `ExecutionEnvironment`。
 
-MVP 实现：`ProcessRunner`（`runner.go`）。
+MVP 实现：`ProcessRunner`（`internal/process/runner.go`，通过 `plugins/runner` 注册）。
 
 ## 2. 接口
 
@@ -22,6 +22,7 @@ type CallResult struct {
     Data        []byte
     RawResult   interface{}
     GasConsumed uint64
+    Events      []Event
     Stdout      string
     Stderr      string
 }
@@ -41,8 +42,10 @@ flowchart TD
 
 - 超时：`context` deadline 或 Runner 默认 timeout
 - Gas 上限：`WithGasLimit` → 环境变量 `VM_GAS_LIMIT`
-- 成功响应：`{"ok":true,"result":...,"gas":N}`
-- 失败响应：`{"ok":false,"error":"...","gas":N}`
+- 成功响应：`{"version":1,"ok":true,"result":...,"gas":N,"events":[]}`
+- 失败响应：`{"version":1,"ok":false,"code":"CONTRACT_ERROR","error":"...","gas":N,"events":[]}`
+- 严格校验单个响应、协议版本、必需字段、错误分类和输出上限；参数请求也有体积限制。
+- 上下文辅助逻辑位于 internal/callcontext；引擎通过 Execute(ctx, ExecutionRequest) 提供业务上下文，Runner 不承担部署、存储或策略校验。
 
 ## 4. 资源限制（MVP）
 
@@ -64,4 +67,4 @@ flowchart TD
 
 ## 6. 测试
 
-`runner_test.go` 覆盖：成功调用、未知函数、非法响应、非零退出、超时、Gas 超限。
+历史 `internal/builtin/runner_test.go` 回归测试及独立进程测试覆盖：成功调用、未知函数、非法响应、非零退出、超时、Gas 超限。

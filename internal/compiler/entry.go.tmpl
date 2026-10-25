@@ -1,0 +1,77 @@
+package main
+
+import (
+ __vmBytes "bytes"
+ __vmJSON "encoding/json"
+ __vmFmt "fmt"
+ __vmIO "io"
+ __vmOS "os"
+ __vmStrconv "strconv"
+ __vmAPI "github.com/lengzhao/vm/contractapi"
+)
+
+func __vmConsumeGas(amount uint64) { __vmAPI.ConsumeGas(amount) }
+
+type __vmCallRequest struct {
+ Version int `json:"version"`
+ Function string `json:"function"`
+ Args []__vmJSON.RawMessage `json:"args"`
+}
+
+type __vmCallResponse struct {
+ Version int `json:"version"`
+ OK bool `json:"ok"`
+ Result interface{} `json:"result,omitempty"`
+ Code __vmAPI.ErrorCode `json:"code,omitempty"`
+ Error string `json:"error,omitempty"`
+ Gas uint64 `json:"gas"`
+ Events []__vmAPI.Event `json:"events,omitempty"`
+}
+
+func __vmWriteResponse(resp __vmCallResponse) {
+ resp.Version = __vmAPI.ProtocolVersion
+ resp.Gas = __vmAPI.GasUsed()
+ resp.Events = __vmAPI.DrainEvents()
+ payload,err := __vmJSON.Marshal(resp)
+ if err != nil {
+  payload,_ = __vmJSON.Marshal(__vmCallResponse{Version:__vmAPI.ProtocolVersion,OK:false,Code:__vmAPI.CodeInvalidResult,Error:"cannot encode contract result: "+err.Error(),Gas:resp.Gas})
+ }
+ __vmFmt.Fprintln(__vmOS.Stdout,string(payload))
+}
+
+func __vmFail(code __vmAPI.ErrorCode, message string) {
+ if message=="" { message=string(code) }
+ __vmWriteResponse(__vmCallResponse{OK:false,Code:code,Error:message})
+ __vmOS.Exit(1)
+}
+
+func __vmDecodeScalar[T any](raw __vmJSON.RawMessage)(T,error) {
+ var value T
+ if __vmBytes.Equal(__vmBytes.TrimSpace(raw),[]byte("null")){return value,__vmFmt.Errorf("null is not a scalar value")}
+ err := __vmJSON.Unmarshal(raw,&value)
+ return value,err
+}
+
+func main() {
+ defer func(){if r:=recover();r!=nil{
+  code:=__vmAPI.CodeContractPanic
+  if _,ok:=r.(__vmAPI.GasLimitError);ok{code=__vmAPI.CodeGasLimitExceeded}
+  __vmFail(code,__vmFmt.Sprint(r))
+ }}()
+ __vmAPI.Reset()
+ __vmAPI.ResetGas()
+ var limit uint64
+ if raw:=__vmOS.Getenv("VM_GAS_LIMIT");raw!=""{if v,err:=__vmStrconv.ParseUint(raw,10,64);err==nil{limit=v}}
+ __vmAPI.InitGas(limit)
+ __vmAPI.ConsumeGas(__vmAPI.GasEntryBase)
+ data,err:=__vmIO.ReadAll(__vmIO.LimitReader(__vmOS.Stdin,(1<<20)+1))
+ if err!=nil{__vmFail(__vmAPI.CodeInvalidRequest,err.Error())}
+ if len(data)>1<<20 {__vmFail(__vmAPI.CodeInvalidRequest,"request exceeds 1 MiB")}
+ var req __vmCallRequest
+ decoder:=__vmJSON.NewDecoder(__vmBytes.NewReader(data));decoder.DisallowUnknownFields()
+ if err:=decoder.Decode(&req);err!=nil{__vmFail(__vmAPI.CodeInvalidRequest,"invalid request json: "+err.Error())}
+ var extra interface{}
+ if err:=decoder.Decode(&extra);err!=__vmIO.EOF{__vmFail(__vmAPI.CodeInvalidRequest,"expected a single request")}
+ if req.Args==nil{__vmFail(__vmAPI.CodeInvalidRequest,"args must be a JSON array")}
+ if req.Version!=__vmAPI.ProtocolVersion{__vmFail(__vmAPI.CodeUnsupportedVersion,"unsupported request version")}
+ switch req.Function {

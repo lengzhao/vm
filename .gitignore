@@ -59,3 +59,8 @@ coverage.html
 
 # Git worktrees (local isolation)
 .worktrees/
+
+# Local code index and generated contract artifacts
+/.codegraph/
+/contracts/
+/test_contracts/

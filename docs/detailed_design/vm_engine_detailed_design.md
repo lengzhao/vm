@@ -1,76 +1,58 @@
-# 虚拟机执行引擎详细设计文档
+# 虚拟机执行引擎详细设计
 
-## 1. 概述
+## 1. 职责与契约
 
-`VMEngine` 是虚拟机对外入口，负责编排编译、部署与执行。自身不直接写占位可执行文件，也不内联执行逻辑。
-
-## 2. 结构
+`internal/engine` 编排业务能力，插件工厂位于 `plugins/engine`。`core.Engine` 组合 `ContractCompiler`、`ContractDeployer`、`ContractReader`、`Executor`、`ABIService` 和 `GasEstimationService`，不要求兼容查询、配置诊断或生命周期方法。
 
 ```go
-type VMEngine struct {
-    config           VMConfig
-    securityReviewer SecurityReviewer
-    abiGenerator     ABIGenerator
-    gasMetering      GasMetering
-    contractManager  ContractManager
-    compiler         ContractCompiler
-    runner           Runner
-    lastEvents       []Event // 兼容 GetLastEvents；以 ExecuteResult 为准
-    mu               sync.Mutex
+type Executor interface {
+    Execute(context.Context, ExecutionRequest) (*ExecuteResult, error)
+}
+type ExecutionRequest struct {
+    Address string
+    Function string
+    Args []any
+    CallContext *CallContext
 }
 ```
+
+根包 `VMEngine` 和 `internal/compat` 负责旧签名、最近调用状态和 getter。根包 `Stop() error` 委托 Runtime；`assembly.Runtime.Stop(ctx)` 统一处理图中实例可选的 `Stop(context.Context) error`。
+
+## 2. 显式依赖
+
+```go
+type Deps struct {
+    Policy core.SourcePolicy
+    ABI core.ABIGenerator
+    Compiler core.ContractCompiler
+    Deployer core.ContractDeployer
+    Contracts core.ContractReader
+    Runner core.Runner
+    Meters core.GasMeterFactory
+    Estimator core.GasEstimator
+    Validator core.ArtifactValidator
+}
+```
+
+引擎不构造默认子模块，不承担文件存储和地址生成。画像构建由编译器依赖的 `GasProfileBuilder` 完成；同一个 `GasProfiler` 插件可同时提供画像和估算能力。
 
 ## 3. 编排流程
 
-### 3.1 Compile
-```mermaid
-flowchart TD
-    A[Compile source] --> B[ContractCompiler.Compile]
-    B --> C[Validate]
-    C --> D[Generate ABI]
-    D --> E{缓存命中?}
-    E -->|是| H[CompiledContract]
-    E -->|否| F[InjectGas + entry + embed contractapi]
-    F --> G[go build]
-    G --> H
-```
+- `Compile(ctx, source)`：向编译器传递调用方上下文。
+- `GenerateABI(ctx, source)`：源码策略审查后生成 ABI。
+- `Deploy(ctx, artifact)`：委托部署插件。部署插件校验产物策略，分配地址后调用存储的 Put；不修改调用方产物。
+- `Get(ctx, address)`：委托只读存储能力，返回完整产物。
+- `Execute(ctx, request)`：读取产物，调用 ArtifactValidator，解析 Host 为独立值快照，创建本次 Gas 计量器，向 Runner 传入派生超时上下文，返回 Data/Events/GasConsumed。
+- `EstimateGas(ctx, address, function, opts)`：读取并校验产物，委托 GasEstimator；可选 DryRun 使用同一执行路径。
 
-### 3.2 Deploy
-1. 校验 `ExecutablePath` 存在
-2. 委托 `ContractManager.Deploy`
-3. 返回合约地址，并更新 `CompiledContract.Address`
+事件不会回放到 `Host.Log`。最大 Gas 是硬上限，调用上下文只能进一步收紧；并发调用使用各自的 ExecuteResult。
 
-### 3.3 Execute / ExecuteWithContext
-```mermaid
-flowchart TD
-    A[ExecuteWithContext] --> B[Reset Gas]
-    B --> C[LoadContract]
-    C --> D[注入 CallContext 到 ctx]
-    D --> E[Runner.Run 最小 VM_* env]
-    E --> F[ExecuteResult: Data/Events/Gas]
-    F --> G[同步 Gas / lastEvents]
-```
+## 4. 策略与配置
 
-事件以 `ExecuteResult` 自包含返回，不回放到 `Host.Log`。
+源码策略身份与保证分开。`PolicyGuarantor` 可声明确定性保证，自定义策略不需要使用内置 ID。`policy/artifact` 单独负责接受的策略 ID 和所需保证，部署和执行共享该校验契约。
 
-## 4. 配置
+内建引擎配置仅包含 MaxGasLimit、EnableGasMetering 和 ExecutionTimeout。安全、编译、存储及策略参数由各自插件配置。完整图与默认预设见 [插件指南](../plugins.md)。
 
-```go
-type VMConfig struct {
-    MaxGasLimit          uint64
-    EnableSecurityChecks bool
-    EnableGasMetering    bool
-    ExecutionTimeout     time.Duration
-    ContractStorageDir   string
-}
-```
+## 5. 当前限制
 
-## 5. 与 Runner 协作
-- 超时：`ExecutionTimeout`
-- Gas 上限：通过 context/`VM_GAS_LIMIT` 传给子进程
-- 请求/响应：JSON
-
-## 6. 非目标（本阶段）
-- EstimateGas 精确估算
-- 合约升级
-- Object / 跨合约 Call / 完整链状态读写
+ProcessRunner 提供进程、超时、协议和输出限制；完整 OS 沙箱、链状态读写、跨合约调用与升级仍为后续能力。静态 Gas 估算为启发式值。

@@ -81,19 +81,13 @@ type ReviewResult struct {
 
 #### 3.2.1 SecurityReviewer 接口
 ```go
-// SecurityReviewer 安全审查模块接口（与架构文档保持一致）
-// 根据简化设计原则，接口已精简为核心功能
+// core.SecurityReviewer 只约束源码审查，不约束白名单实现方式。
 type SecurityReviewer interface {
-    // Review 对合约源代码进行安全审查
     Review(sourceCode string) error
-    
-    // IsKeywordAllowed 检查关键字是否被允许
-    IsKeywordAllowed(keyword string) bool
-    
-    // IsImportAllowed 检查导入是否被允许
-    IsImportAllowed(importPath string) bool
 }
 ```
+
+白名单查询 `IsKeywordAllowed/IsImportAllowed` 保留在具体实现和根包兼容接口中，不是插件依赖要求。当前内建实现位于 `internal/security`，由 `security/go` 注册；源码策略与产物策略分别由 `policy/go` 和 `policy/artifact` 负责。本文的配置扩展示例描述具体实现设计，以实际插件 Config 为准。
 
 ### 3.3 核心功能实现
 

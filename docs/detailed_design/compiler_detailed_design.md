@@ -9,7 +9,8 @@
 ```mermaid
 flowchart TD
     A[Validate 安全审查] --> B[Generate ABI]
-    B --> C[InjectGas]
+    B --> P[BuildProfile]
+    P --> C[InjectGas]
     C --> D[生成 entry.go]
     D --> E[go build]
     E --> F[CompiledContract]
@@ -19,13 +20,13 @@ flowchart TD
 
 ```go
 type ContractCompiler interface {
-    Compile(sourceCode string) (*CompiledContract, error)
-    Validate(sourceCode string) error
-    InjectGas(sourceCode string) (string, error)
+    Compile(context.Context, string) (*CompiledContract, error)
 }
 ```
 
-实现：`ContractCompilerImpl`（见 `compiler.go`）。
+实现位于 `internal/compiler`，由 `plugins/compiler` 注入 SourcePolicy、ABIGenerator、GasInjector 和 GasProfileBuilder。安全审查接口仅有 Review，Validate/InjectGas 辅助方法不属于编译插件契约。调用方上下文贯穿构建，取消时清理临时目录，构建超时派生于该上下文。
+
+源码策略可通过 PolicyGuarantor 声明保证，编译器检查保证而非固定策略 ID；产物写入策略 ID 和 Guarantees。确定性策略采用受控构建环境。
 
 ## 4. Gas 注入（MVP）
 
@@ -40,7 +41,7 @@ type ContractCompiler interface {
 
 - 合约源码不得包含 `main`
 - 编译器生成独立 `entry.go`：解析 stdin JSON、按函数名分发、输出 JSON 结果与 Gas
-- 支持参数类型：`int` / `int64` / `uint64` / `float64` / `string` / `bool`
+- 参数和返回类型由统一 ABI schema 验证，支持标量及末尾 error 返回；不支持的签名在生成入口前拒绝。
 
 ## 6. 构建产物
 
@@ -58,5 +59,8 @@ build_<hash>/
 ## 7. 后置
 
 - TinyGo 构建器切换
-- 更丰富类型（slice / struct / error 返回值协议）
-- 编译缓存
+- 更丰富类型（slice / struct）
+
+## 8. 缓存与画像
+
+缓存指纹包括源码、策略 ID、实际插桩代码、入口、内嵌 contractapi、工具链和流水线版本。GasProfileBuilder 生成模型画像；引擎仅依赖 GasEstimator，默认由同一个 GasProfiler 实现配对。内建画像版本为 1，估算器严格拒绝其他版本；旧根包 helper 单独适配历史版本 0。

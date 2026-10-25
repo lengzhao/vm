@@ -1,10 +1,13 @@
 package abi
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +19,7 @@ type Import struct {
 
 // ABI represents the Application Binary Interface of a contract
 type ABI struct {
+	Version     int        `json:"version"`
 	PackageName string     `json:"package_name,omitempty"`
 	Imports     []Import   `json:"imports,omitempty"`
 	Functions   []Function `json:"functions,omitempty"`
@@ -24,6 +28,7 @@ type ABI struct {
 
 // Function represents a function in the contract
 type Function struct {
+	Generic bool        `json:"generic,omitempty"`
 	Name    string      `json:"name,omitempty"`
 	Inputs  []Parameter `json:"inputs,omitempty"`
 	Outputs []Parameter `json:"outputs,omitempty"`
@@ -50,6 +55,7 @@ func ExtractABI(code []byte) (*ABI, error) {
 	}
 
 	abi := &ABI{
+		Version:     SchemaVersion,
 		PackageName: file.Name.Name,
 		Imports:     make([]Import, 0),
 		Functions:   make([]Function, 0),
@@ -58,9 +64,8 @@ func ExtractABI(code []byte) (*ABI, error) {
 
 	// 提取导入信息
 	for _, imp := range file.Imports {
-		importInfo := Import{
-			Path: strings.Trim(imp.Path.Value, "\""),
-		}
+		path, _ := strconv.Unquote(imp.Path.Value)
+		importInfo := Import{Path: path}
 		if imp.Name != nil {
 			importInfo.Name = imp.Name.Name
 		}
@@ -81,7 +86,8 @@ func ExtractABI(code []byte) (*ABI, error) {
 			}
 
 			function := Function{
-				Name: funcDecl.Name.Name,
+				Name:    funcDecl.Name.Name,
+				Generic: funcDecl.Type.TypeParams != nil,
 			}
 
 			// Extract input parameters
@@ -95,7 +101,7 @@ func ExtractABI(code []byte) (*ABI, error) {
 			}
 
 			// Extract events from function body
-			events := extractEventsFromFunction(funcDecl)
+			events := extractEventsFromFunction(funcDecl, eventImports(file))
 			abi.Events = append(abi.Events, events...)
 
 			abi.Functions = append(abi.Functions, function)
@@ -106,95 +112,129 @@ func ExtractABI(code []byte) (*ABI, error) {
 }
 
 // extractEventsFromFunction extracts events from a function's body
-func extractEventsFromFunction(funcDecl *ast.FuncDecl) []Event {
-	events := make([]Event, 0)
-	if funcDecl.Body == nil {
+func eventImports(file *ast.File) map[string]bool {
+	aliases := map[string]bool{}
+	for _, imp := range file.Imports {
+		path, _ := strconv.Unquote(imp.Path.Value)
+		if path != "github.com/lengzhao/vm/contractapi" {
+			continue
+		}
+		name := "contractapi"
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		if name != "." && name != "_" {
+			aliases[name] = true
+		}
+	}
+	return aliases
+}
+
+func staticString(expr ast.Expr) (string, bool) {
+	if id, ok := expr.(*ast.Ident); ok && id.Obj != nil && id.Obj.Kind == ast.Con {
+		if spec, ok := id.Obj.Decl.(*ast.ValueSpec); ok {
+			for i, n := range spec.Names {
+				if n.Name == id.Name && i < len(spec.Values) {
+					expr = spec.Values[i]
+					break
+				}
+			}
+		}
+	}
+	lit, ok := expr.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	value, err := strconv.Unquote(lit.Value)
+	return value, err == nil
+}
+
+func extractEventsFromFunction(fn *ast.FuncDecl, aliases map[string]bool) []Event {
+	events := []Event{}
+	if fn.Body == nil {
 		return events
 	}
-
-	ast.Inspect(funcDecl.Body, func(node ast.Node) bool {
-		callExpr, ok := node.(*ast.CallExpr)
-		if !ok {
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 {
 			return true
 		}
-
-		// Check if this is a ctx.Log call or similar event emission
-		// 支持多种事件发射方式
-		eventName := ""
-		args := callExpr.Args
-
-		// 检查函数调用
-		switch fun := callExpr.Fun.(type) {
-		case *ast.SelectorExpr:
-			// 检查是否是 ctx.Log 或类似的调用
-			if fun.Sel.Name == "Log" || fun.Sel.Name == "Emit" || fun.Sel.Name == "Event" ||
-				fun.Sel.Name == "emit" || fun.Sel.Name == "log" || fun.Sel.Name == "event" {
-				// 第一个参数作为事件名称
-				if len(args) > 0 {
-					if basicLit, ok := args[0].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
-						eventName = strings.Trim(basicLit.Value, "\"")
-						args = args[1:] // 移除事件名称参数
-					} else if ident, ok := args[0].(*ast.Ident); ok {
-						// 如果第一个参数是标识符，将其作为事件名称
-						eventName = ident.Name
-						args = args[1:] // 移除事件名称参数
-					}
-				}
-			}
-		case *ast.Ident:
-			// 检查是否是直接的事件发射函数
-			if fun.Name == "emit" || fun.Name == "log" || fun.Name == "event" ||
-				fun.Name == "Emit" || fun.Name == "Log" || fun.Name == "Event" {
-				// 第一个参数作为事件名称
-				if len(args) > 0 {
-					if basicLit, ok := args[0].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
-						eventName = strings.Trim(basicLit.Value, "\"")
-						args = args[1:] // 移除事件名称参数
-					} else if ident, ok := args[0].(*ast.Ident); ok {
-						// 如果第一个参数是标识符，将其作为事件名称
-						eventName = ident.Name
-						args = args[1:] // 移除事件名称参数
-					}
-				}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "Log" {
+			return true
+		}
+		owner, ok := selector.X.(*ast.Ident)
+		if !ok || owner.Obj != nil || !aliases[owner.Name] {
+			return true
+		}
+		name, known := staticString(call.Args[0])
+		if !known {
+			return true
+		}
+		event := Event{Name: name, Parameters: []Parameter{}}
+		for i := 1; i+1 < len(call.Args); i += 2 {
+			key, known := staticString(call.Args[i])
+			if known {
+				event.Parameters = append(event.Parameters, Parameter{Name: key, Type: eventValueType(call.Args[i+1], aliases, 0)})
 			}
 		}
-
-		// 如果找到了事件名称，创建事件对象
-		if eventName != "" {
-			event := Event{
-				Name:       eventName,
-				Parameters: make([]Parameter, 0),
-			}
-
-			// 提取参数
-			for i := 0; i < len(args); i += 2 {
-				if i+1 < len(args) {
-					// 键值对参数
-					if key, ok := args[i].(*ast.BasicLit); ok && key.Kind == token.STRING {
-						paramName := strings.Trim(key.Value, "\"")
-						paramType := getTypeString(args[i+1])
-						event.Parameters = append(event.Parameters, Parameter{
-							Name: paramName,
-							Type: paramType,
-						})
-					}
-				} else {
-					// 单个参数
-					paramType := getTypeString(args[i])
-					event.Parameters = append(event.Parameters, Parameter{
-						Name: fmt.Sprintf("param%d", i/2+1),
-						Type: paramType,
-					})
-				}
-			}
-
-			events = append(events, event)
-		}
-
+		events = append(events, event)
 		return true
 	})
-
 	return events
+}
+
+func eventValueType(expr ast.Expr, aliases map[string]bool, depth int) string {
+	if depth > 8 {
+		return "unknown"
+	}
+	switch x := expr.(type) {
+	case *ast.BasicLit:
+		return getTypeString(x)
+	case *ast.UnaryExpr:
+		return eventValueType(x.X, aliases, depth+1)
+	case *ast.Ident:
+		if x.Obj == nil {
+			if x.Name == "true" || x.Name == "false" {
+				return "bool"
+			}
+			return "unknown"
+		}
+		switch decl := x.Obj.Decl.(type) {
+		case *ast.Field:
+			return getTypeString(decl.Type)
+		case *ast.ValueSpec:
+			if decl.Type != nil {
+				return getTypeString(decl.Type)
+			}
+			for i, n := range decl.Names {
+				if n.Name == x.Name && i < len(decl.Values) {
+					return eventValueType(decl.Values[i], aliases, depth+1)
+				}
+			}
+		case *ast.AssignStmt:
+			for i, n := range decl.Lhs {
+				if id, ok := n.(*ast.Ident); ok && id.Name == x.Name && i < len(decl.Rhs) {
+					return eventValueType(decl.Rhs[i], aliases, depth+1)
+				}
+			}
+		}
+	case *ast.CallExpr:
+		if id, ok := x.Fun.(*ast.Ident); ok && id.Obj == nil && IsScalarType(id.Name) {
+			return id.Name
+		}
+		if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+			if id, ok := sel.X.(*ast.Ident); ok && id.Obj == nil && aliases[id.Name] {
+				switch sel.Sel.Name {
+				case "BlockHeight", "BlockTime":
+					return "uint64"
+				case "Sender", "ContractAddress":
+					return "string"
+				}
+			}
+		}
+	}
+	return "unknown"
 }
 
 // extractParameters extracts parameter information from a field list
@@ -230,11 +270,8 @@ func extractParameters(fieldList *ast.FieldList) []Parameter {
 
 // getTypeString converts an ast.Expr to its string representation
 func getTypeString(expr ast.Expr) string {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		return t.Name
-	case *ast.BasicLit:
-		switch t.Kind {
+	if lit, ok := expr.(*ast.BasicLit); ok {
+		switch lit.Kind {
 		case token.INT:
 			return "int"
 		case token.FLOAT:
@@ -243,44 +280,13 @@ func getTypeString(expr ast.Expr) string {
 			return "string"
 		case token.CHAR:
 			return "rune"
-		default:
-			return "unknown"
 		}
-	case *ast.StarExpr:
-		return "*" + getTypeString(t.X)
-	case *ast.ArrayType:
-		if t.Len == nil {
-			return "[]" + getTypeString(t.Elt)
-		}
-		return fmt.Sprintf("[%s]%s", t.Len, getTypeString(t.Elt))
-	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", getTypeString(t.X), t.Sel.Name)
-	case *ast.MapType:
-		return fmt.Sprintf("map[%s]%s", getTypeString(t.Key), getTypeString(t.Value))
-	case *ast.ChanType:
-		var dir string
-		switch t.Dir {
-		case ast.SEND:
-			dir = "<-"
-		case ast.RECV:
-			dir = "<-"
-		case ast.SEND | ast.RECV:
-			dir = ""
-		}
-		return fmt.Sprintf("chan%s %s", dir, getTypeString(t.Value))
-	case *ast.InterfaceType:
-		return "interface{}"
-	case *ast.StructType:
-		return "struct{}"
-	case *ast.CallExpr:
-		// For function calls, try to get the return type
-		if sel, ok := t.Fun.(*ast.SelectorExpr); ok {
-			return getTypeString(sel)
-		}
-		return "unknown"
-	default:
-		return fmt.Sprintf("%T", t)
 	}
+	var out bytes.Buffer
+	if err := format.Node(&out, token.NewFileSet(), expr); err != nil {
+		return "unknown"
+	}
+	return out.String()
 }
 
 // String returns a string representation of the ABI

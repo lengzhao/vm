@@ -4,7 +4,7 @@
 
 Gas 分两层：
 
-1. **宿主侧** `GasMetering`：记录最近一次执行消耗
+1. **宿主侧** `GasMetering`：每次调用的独立计量器，由 GasMeterFactory 创建
 2. **合约侧** `contractapi`：统一计数器；编译期注入 `ConsumeGas`；默认库按表扣费
 
 ## 2. 宿主接口
@@ -19,7 +19,7 @@ type GasMetering interface {
 }
 ```
 
-`VMEngine.ExecuteWithContext` 在执行后把子进程回报的 `gas` 写入宿主计量器。
+`core.Engine.Execute(ctx, request)` 校验子进程回报的 Gas 并返回本次 ExecuteResult，不保存历史调用状态。根包兼容门面的 ExecuteWithContext/GetGasConsumed 保留最近一次结果语义。
 
 ## 3. 计费点（已实现）
 

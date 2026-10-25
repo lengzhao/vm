@@ -31,8 +31,8 @@ func InitGas(limit uint64) {
 func ConsumeGas(amount uint64) {
 	gasMu.Lock()
 	defer gasMu.Unlock()
-	if gasLimit > 0 && gasUsed+amount > gasLimit {
-		panic("gas limit exceeded")
+	if amount > ^uint64(0)-gasUsed || (gasLimit > 0 && (gasUsed > gasLimit || amount > gasLimit-gasUsed)) {
+		panic(GasLimitError{})
 	}
 	gasUsed += amount
 }

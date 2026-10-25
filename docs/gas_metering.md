@@ -10,7 +10,7 @@
 
 编译阶段在以下位置插入 `contractapi.ConsumeGas`：
 
-- 每个导出/内部函数入口（1 Gas）
+- 每个导出/内部函数及匿名函数入口（1 Gas）
 - `for` / `range` 循环体开头（每次迭代 1 Gas）
 - 执行入口固定基础 Gas（`contractapi.InitGas` + `ConsumeGas(10)`）
 
@@ -38,7 +38,7 @@ Deploy 同时落盘 `gas_profile.json`，供静态 `EstimateGas` 使用。
 | 操作类型 | Gas消耗 |
 |---------|--------|
 | 执行入口基础消耗 | 10 |
-| 函数入口 | 1 |
+| 函数/匿名函数入口 | 1 |
 | for / range 每次迭代 | 1 |
 
 ### 3.2 目标态基础操作（后置精细化，非当前实现）
@@ -138,7 +138,7 @@ Estimated = entry_gas
           + Σ(api_calls[name] * GasTable[name])
 ```
 
-按约定公式的启发式估算（非严格 gas 上界）：同名 helper 多次调用按名去重、循环内 API 不按迭代放大，这些场景可能出现 static < dry_run。需要硬上限时请用 DryRun。不做路径敏感分析。无 `gas_profile.json`（旧合约）时返回 error，需重新 Compile/Deploy。
+按约定公式的启发式估算（非严格 gas 上界）：同名 helper 多次调用按名去重、循环内 API 不按迭代放大，这些场景可能出现 static < dry_run。DryRun 只测量给定输入与上下文的一次执行，不保证其他输入或状态下的上界；硬限制由运行时有效 Gas 上限执行。不做路径敏感分析。无 `gas_profile.json`（旧合约）时返回 error，需重新 Compile/Deploy。
 
 ### 6.2 DryRun 模式
 
@@ -157,3 +157,11 @@ go test . -bench=BenchmarkExecute -benchtime=1x -count=1
 ```
 
 详细设计见 [`detailed_design/gas_metering_detailed_design.md`](detailed_design/gas_metering_detailed_design.md)。
+
+
+## 运行时完整性与并发
+
+Gas 初始化/重置等管理符号仅供编译器入口使用。合约源码禁止引用这些符号、保留的 __vm 标识、init 和 recover；此检查不受可选安全开关影响。
+宿主按调用创建独立计量器，以引擎和调用上下文的较小非零上限校验，避免并发重置/累加干扰。零调用上限不能解除已配置的引擎上限。
+宿主与合约计数器均在加法前检查 uint64 溢出。失败扣费不修改计数器。
+这些措施只加固当前计量协议，未覆盖完整内存、标准库复杂度及操作系统资源成本。

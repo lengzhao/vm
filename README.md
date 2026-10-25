@@ -8,7 +8,7 @@
 - **安全优先**：通过关键字/导入白名单与 AST 审查确保执行安全性
 - **开发友好**：降低智能合约开发门槛，让熟悉Go语言的开发者无缝接入
 - **可执行流水线**：Compile → Deploy → Execute 已打通（ProcessRunner）
-- **Gas计费**：入口/函数/循环控制点 + 默认库（只读/Log）计费；`EstimateGas` 静态上界与 DryRun
+- **Gas计费**：入口/函数/循环控制点 + 默认库（只读/Log）计费；`EstimateGas` 静态启发式估算与 DryRun
 - **并行执行（设计方向）**：通过对象隔离支持交易并行，尚未实现
 
 > 注意：当前为 Alpha/MVP。ProcessRunner 仅有进程超时与 Gas 限制，**不应用于执行不可信合约**。见 [docs/sandbox_roadmap.md](docs/sandbox_roadmap.md)。
@@ -169,3 +169,44 @@ go build .
 ## 许可证
 
 [MIT License](LICENSE)
+
+## 运行边界与接口约束（架构加固）
+
+- 合约可访问 `contractapi` 的 `BlockHeight`、`BlockTime`、`Sender`、`ContractAddress`、`Log`。Gas 初始化/重置、事件清理和计量属于运行时控制，不允许在合约源码中引用（包括别名、函数值和点导入）。
+- 保留 `__vm` 前缀；合约不允许定义 `init` 或使用 `recover`。这些完整性检查即使关闭可选安全审查仍执行。关闭安全审查不提供不可信代码隔离。
+- 函数声明、匿名函数和循环体均插入 Gas 控制点；入口超限返回结构化失败。
+- 每次调用独立计量和解析 Host 上下文。配置的 `MaxGasLimit` 是上限，调用上下文只能收紧；零表示无限仅在未配置引擎上限时生效。
+- `ExecuteResult` 是调用结果的依据。`GetGasConsumed` / `GetLastEvents` 仅表示最近结束的调用，不能用于关联并发请求。
+- 返回值与事件中的通用 JSON 数值使用 `json.Number`，保留 int64/uint64 精度；使用者应通过 `Int64` / `strconv.ParseUint` 等精确解析。响应只允许一个 JSON 值。
+- ProcessRunner 的 stdout、stderr 各限制为 1 MiB，超限取消直接进程；管道收尾最多额外等待 100ms。此限制不等同于进程树、内存、文件或网络隔离。
+- 构建使用独立临时目录，成功后原子发布绝对路径产物，单次 `go build` 默认超时 30s。缓存指纹包含 VM 的 Go 版本和平台；完整产物清单与篡改校验仍待实现。
+- `NewVMEngineWithRunner(config, runner)` 可注入执行后端，传入 nil 等价于现有 `NewVMEngine`。自定义后端需要遵守同样的数值、Gas、事件与资源契约。
+
+
+## 可选确定性源码策略
+
+设置 `VMConfig.RequireDeterminism=true` 启用 `go-deterministic-v1`。它强制安全审查，禁止机器时间、浮点/指针观测和直接输出，仅开放受限值计算及链上下文 API；严格模式拒绝没有匹配策略标签的旧产物。默认使用开发模式，确定性策略需显式启用。
+
+详见 [确定性源码策略](docs/deterministic_execution.md)。该策略不等同于完整沙箱或完整共识执行规范；工具链固定、产物摘要与确定性部署地址仍后置。
+
+
+## ABI 与调用协议
+
+当前仅支持 ABI schema v1 / 调用协议 v1，不兼容无版本旧产物；升级后重新 Compile / Deploy。统一支持整数、布尔、字符串与开发模式浮点标量，末位 error 表示调用失败。参数严格匹配 JSON 类型及数量；错误通过 ExecutionError.Code 分类。
+
+详见 [ABI 与调用协议 v1](docs/call_protocol.md)。
+
+## PluginKit 插件化
+
+VM 的编译、安全策略、产物接受策略、ABI、Gas、部署、存储、执行后端及引擎编排已通过 PluginKit 装配，宿主项目使用 Go 1.26.1。
+现有 `vm.NewVMEngine` API 和以上示例保留，由兼容层适配。新项目可使用 `assembly.Load` / `assembly.Build` 配置依赖图，通过 `rt.Engine.Compile(ctx, source)` 和 `rt.Engine.Execute(ctx, core.ExecutionRequest{...})` 调用业务能力，执行返回包含事件和 Gas 的 `ExecuteResult`。
+
+核心接口按职责收敛：编译器仅提供 Compile，安全审查仅提供 Review，存储 Put/Get 与部署分离。源码策略通过可选 Guarantees 声明保证，自定义确定性策略不绑定内置 ID；`policy/artifact` 校验产物身份与保证。Gas 画像构建和估算提供窄视图，由同一个 Profiler 实现配对。
+
+内建实现按能力拆分到独立 internal 包，internal/compat 适配旧接口，internal/builtin 仅保留历史回归测试。core.Engine 只组合业务接口，不包含 Stop 或最近结果 getter；通过 `rt.Stop(ctx)` 管理实例可选的 `Stop(context.Context) error`，根包旧 `Stop() error` 保留。
+
+```bash
+go run ./examples/plugins presets/default.yaml
+```
+
+参见 [插件架构与扩展指南](docs/plugins.md) 和 [默认预设](presets/default.yaml)。

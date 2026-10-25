@@ -22,36 +22,17 @@ func main() {
 
 	sourceCode := `
 package main
-
-type Context struct{}
-
-func (c *Context) Log(name string, args ...interface{}) {}
-func (c *Context) Emit(name string, args ...interface{}) {}
-func (c *Context) Event(name string, args ...interface{}) {}
-
-func emit(name string, args ...interface{}) {}
-func logEvent(name string, args ...interface{}) {}
-func event(name string, args ...interface{}) {}
-
-func SetValue(ctx *Context, value int) {
-	ctx.Log("SetValue", "value", value)
-	ctx.Emit("SetValue", "value", value)
-	ctx.Event("SetValue", "value", value)
-	emit("GlobalSetValue", "value", value)
-	logEvent("GlobalSetValue", "value", value)
-	event("GlobalSetValue", "value", value)
+import "github.com/lengzhao/vm/contractapi"
+const TransferEvent = "Transfer"
+func SetValue(value int64) {
+ contractapi.Log("SetValue","value",value)
 }
-
-func Transfer(ctx *Context, from, to string, amount int) {
-	ctx.Log("Transfer", "from", from, "to", to, "amount", amount)
+func Transfer(from,to string,amount uint64) {
+ contractapi.Log(TransferEvent,"from",from,"to",to,"amount",amount)
 }
-
-func ComplexFunction(ctx *Context) {
-	eventName := "DynamicEvent"
-	emit(eventName, "param1", "value1", "param2", 42)
-	for i := 0; i < 3; i++ {
-		ctx.Emit("LoopEvent", "iteration", i)
-	}
+func DynamicEvent(name string) {
+ // 动态事件名不会被静态 ABI 声明；运行时结果才是完整事件来源。
+ contractapi.Log(name,"value",1)
 }
 `
 

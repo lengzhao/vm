@@ -14,7 +14,7 @@
 ## 2. 系统架构
 
 ### 2.1 总体架构
-当前阶段以可执行合约流水线为核心，而不是过早拆分过多独立子系统：
+当前以 PluginKit 构建完整依赖图，编译与执行能力通过接口注入。注册、Config/Deps 和依赖排序复用 PluginKit；详见 [插件指南](plugins.md)。运行流水线如下：
 
 ```mermaid
 flowchart TD
@@ -24,7 +24,7 @@ flowchart TD
     ABI --> Gas[注入 contractapi.ConsumeGas 与入口]
     Gas --> Build[go build 编译产物]
     Profile --> Build
-    Build --> Store[ContractManager 存储含 gas_profile.json]
+    Build --> Store[Deployer 分配地址并委托 ContractStore]
     Store --> Execute[VMEngine.Execute / EstimateGas]
     Execute --> Runner[ProcessRunner]
     Runner --> Result[返回结果与 Gas]
@@ -34,13 +34,14 @@ flowchart TD
 
 保留并明确以下边界：
 
-1. **VMEngine**：外部入口，只负责编排
-2. **ContractCompiler**：源码到 `CompiledContract`
+1. **core.Engine**：业务门面组合，所有操作显式接收 context；根 VMEngine 适配旧 API
+2. **ContractCompiler**：仅 Compile(ctx, source)，源码到 `CompiledContract`
 3. **Runner**：执行已编译合约产物
-4. **ContractManager**：部署、存储、加载合约元数据和产物
+4. **ContractDeployer / ContractStore**：部署规则与地址分配、产物 Put/Get 存储分别负责
 5. **ABIGenerator**：从 AST 提取 ABI，作为编译流水线一环
-6. **SecurityReviewer**：Import/危险节点/包级可变状态审查
-7. **GasMetering**：宿主侧计量；合约侧统一到 `contractapi`；`EstimateGas` 静态 + DryRun
+6. **SecurityReviewer**：仅 Review；内建实现审查导入、危险节点和包级可变状态
+7. **GasMetering**：每次调用独立计量；GasProfileBuilder 与 GasEstimator 为同一 Profiler 的窄视图；EstimateGas 静态 + DryRun
+8. **ArtifactValidator**：独立校验产物策略 ID 与执行保证；确定性不绑定固定策略 ID
 
 ### 2.3 当前阶段后置能力
 以下能力保留设计方向，但不作为当前主链路阻塞项：
@@ -75,27 +76,26 @@ flowchart TD
 - 复杂沙箱后置
 
 ### 3.5 编译缓存
-- 产物路径按源码指纹 + `compilerBuildID` 命名；命中则跳过 `go build`
+- 产物路径按源码、策略 ID、实际注入代码、生成入口和 `compilerBuildID` 指纹命名；命中则跳过 `go build`
 - 构建时内嵌 `contractapi` 源码（`//go:embed`），本地 `replace`，无需每次 `go mod tidy`
 
 ## 4. 模块与目录
 
-当前实现采用扁平 `package vm`（不含 `internal`）：
+代码按契约、插件、装配与兼容入口分层。internal/compat 适配旧接口，internal/builtin 仅保存历史回归测试；业务实现按能力独立分包。core.Engine 不要求 Stop，assembly 处理可选 Start(ctx)/Stop(ctx)；根包保留旧 Stop()。
 
 ```text
 vm/
-├── engine.go           # VMEngine 编排入口
-├── compiler.go         # 编译流水线（含缓存）
-├── compiler_embed.go   # 内嵌 contractapi
-├── runner.go           # ProcessRunner
-├── host.go             # Host / CallContext / Event
-├── security.go         # 安全审查
-├── gas.go              # 宿主 Gas 计量
-├── gas_profile.go      # GasProfile 扫描与静态估算
-├── contract.go         # 合约存储管理（含 gas_profile.json）
-├── contractapi/        # 合约侧默认库 + Gas 计数器
-├── abi/                # ABI 提取
-└── docs/               # 设计文档
+├── vm.go / types.go    # 兼容 API 与 core 类型别名
+├── core/               # 公共类型和能力接口
+├── cap/                # 插件扩展能力名称
+├── plugins/            # ABI / 策略 / Gas / 编译 / 存储 / Runner / Engine
+├── assembly/           # PluginKit 构建、默认图与生命周期
+├── internal/           # compiler/security/policy/gas/abigen/storage/deployment/process/engine
+├── presets/            # YAML 插件图
+├── contractapi/        # 独立的合约侧 API
+├── abi/                # ABI schema 与提取
+├── examples/plugins/   # 配置装配示例
+└── docs/
 ```
 
 ## 5. 执行与数据交互
@@ -109,6 +109,7 @@ Runner 通过 stdin 传入 JSON：
 
 ```json
 {
+  "version": 1,
   "function": "Add",
   "args": [10, 20]
 }
@@ -118,6 +119,7 @@ Runner 通过 stdin 传入 JSON：
 
 ```json
 {
+  "version": 1,
   "ok": true,
   "result": 30,
   "gas": 11

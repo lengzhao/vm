@@ -10,6 +10,7 @@
 docs/
 ├── 00_directory_structure.md
 ├── architecture.md
+├── plugins.md                   # PluginKit 配置、扩展与生命周期
 ├── modular_architecture_design.md
 ├── default_library.md
 ├── host_runtime.md              # Host Runtime MVP 设计
@@ -30,14 +31,19 @@ docs/
     └── contract_processing_flow.md
 ```
 
-代码侧当前为扁平结构（无 `internal`）：
+代码侧使用 PluginKit 分层结构：
 
 ```text
 vm/
-├── engine.go / compiler.go / runner.go / security.go / gas.go / contract.go / host.go
-├── contractapi/   # 合约侧默认库
+├── vm.go / types.go # 兼容 API
+├── core/ / cap/     # 公共契约
+├── plugins/         # Config/Deps 工厂与注册
+├── assembly/        # 配置与生命周期
+├── internal/          # 按能力分包；compat 适配；builtin 仅历史回归测试
+├── presets/         # 插件图
+├── contractapi/     # 合约侧默认库
 ├── abi/
-├── examples/{basic,gas,complete,advanced,event}/
+├── examples/{basic,gas,complete,advanced,event,plugins}/
 └── docs/
 ```
 
