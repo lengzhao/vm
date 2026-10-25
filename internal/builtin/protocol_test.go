@@ -142,7 +142,7 @@ func TestProtocolRequiresResponseFields(t *testing.T) {
 	// Validate response shape independently of process-startup scheduling.
 	// Dedicated timeout/cancellation tests retain their short latency budgets.
 	runner := NewProcessRunner(5 * time.Second)
-	for _, payload := range []string{`{"version":1,"ok":true,"result":7}`, `{"version":1,"gas":11,"code":"CONTRACT_ERROR","error":"failed"}`, `{"version":1,"ok":false,"gas":11,"code":"CONTRACT_ERROR","error":"failed","result":7}`} {
+	for _, payload := range []string{`{"version":3,"ok":true,"result":7}`, `{"version":3,"gas":11,"code":"CONTRACT_ERROR","error":"failed"}`, `{"version":3,"ok":false,"gas":11,"code":"CONTRACT_ERROR","error":"failed","result":7}`} {
 		p := filepath.Join(t.TempDir(), "contract")
 		os.WriteFile(p, []byte("#!/bin/sh\necho '"+payload+"'\n"), 0755)
 		_, err := runner.Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
@@ -195,7 +195,7 @@ func TestProtocolAllScalarTypesRoundTrip(t *testing.T) {
 
 func TestProtocolRejectsMalformedRequestEnvelopes(t *testing.T) {
 	c := compileTestContract(t, t.TempDir(), `package main;func F(){}`)
-	for _, payload := range []string{`{"version":1,"function":"F","args":null}`, `{"version":1,"function":"F","args":[],"extra":1}`, `{"version":1,"function":"F","args":[]} {}`, strings.Repeat(" ", (1<<20)+1)} {
+	for _, payload := range []string{`{"version":3,"function":"F","args":null}`, `{"version":3,"function":"F","args":[],"extra":1}`, `{"version":3,"function":"F","args":[]} {}`, strings.Repeat(" ", (1<<20)+1)} {
 		cmd := exec.Command(c.ExecutablePath)
 		cmd.Stdin = strings.NewReader(payload)
 		out, _ := cmd.Output()

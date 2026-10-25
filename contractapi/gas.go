@@ -4,13 +4,14 @@ import "sync"
 
 // Gas 表常量（本阶段生效项）。
 const (
-	GasEntryBase    = 10
-	GasFuncOrLoop   = 1
-	GasBlockHeight  = 1
-	GasBlockTime    = 1
-	GasSender       = 1
-	GasContractAddr = 1
-	GasLog          = 2
+	GasCrossCall    uint64 = 10
+	GasEntryBase           = 10
+	GasFuncOrLoop          = 1
+	GasBlockHeight         = 1
+	GasBlockTime           = 1
+	GasSender              = 1
+	GasContractAddr        = 1
+	GasLog                 = 2
 )
 
 var (

@@ -32,7 +32,7 @@ func JSONDigest(value any) (string, error) {
 }
 
 func RuntimeDigest() string {
-	digest, _ := JSONDigest([]string{contractapi.Source, contractapi.GasSource, contractapi.ProtocolSource})
+	digest, _ := JSONDigest([]string{contractapi.Source, contractapi.GasSource, contractapi.ProtocolSource, contractapi.ObjectSource, contractapi.CallSource})
 	return digest
 }
 

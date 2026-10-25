@@ -121,7 +121,7 @@ func TestProcessRunnerInvalidJSONResponse(t *testing.T) {
 func TestProcessRunnerNonZeroExitWithErrorJSON(t *testing.T) {
 	dir := t.TempDir()
 	execPath := filepath.Join(dir, "fail_contract")
-	script := "#!/bin/sh\necho '{\"version\":1,\"ok\":false,\"code\":\"CONTRACT_ERROR\",\"error\":\"boom\",\"gas\":3}'\nexit 1\n"
+	script := "#!/bin/sh\necho '{\"version\":3,\"ok\":false,\"code\":\"CONTRACT_ERROR\",\"error\":\"boom\",\"gas\":3}'\nexit 1\n"
 	if err := os.WriteFile(execPath, []byte(script), 0755); err != nil {
 		t.Fatalf("write script: %v", err)
 	}

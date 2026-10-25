@@ -1,6 +1,8 @@
 # Local development VM; ProcessRunner is not an OS sandbox.
 root: engine
 plugins:
+  state:
+    use: state/memory
   security:
     use: security/go
   abi:
@@ -37,7 +39,9 @@ plugins:
       executionTimeout: 30s
       enableGasMetering: true
       maxGasLimit: 1000000
+      maxCallDepth: 8
     deps:
+      state: state
       policy: policy
       abi: abi
       compiler: compiler

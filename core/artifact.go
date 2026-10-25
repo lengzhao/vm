@@ -2,8 +2,8 @@ package core
 
 // These versions describe runtime semantics, independently of source policy IDs.
 const ArtifactManifestVersion = 1
-const ArtifactRuntimeVersion = "contractapi-v1"
-const ArtifactGasVersion = "go-gas-v1"
+const ArtifactRuntimeVersion = "contractapi-v3-call"
+const ArtifactGasVersion = "go-gas-v3-call"
 const CodeArtifactIntegrity ErrorCode = "ARTIFACT_INTEGRITY"
 
 // ArtifactToolchain records the actual compiler and effective build target.

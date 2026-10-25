@@ -12,3 +12,9 @@ var GasSource string
 
 //go:embed protocol.go
 var ProtocolSource string
+
+//go:embed object.go
+var ObjectSource string
+
+//go:embed call.go
+var CallSource string

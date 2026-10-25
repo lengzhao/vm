@@ -24,6 +24,7 @@ func DefaultConfig(c core.VMConfig) Config {
 		return n
 	}
 	return Config{Root: "engine", Plugins: map[string]any{
+		"state":     node("state/memory", nil, nil),
 		"security":  node("security/go", nil, nil),
 		"abi":       node("abi/go", nil, nil),
 		"policy":    node("policy/go", map[string]any{"enableSecurity": c.EnableSecurityChecks, "deterministic": c.RequireDeterminism}, map[string]any{"reviewer": "security"}),
@@ -36,7 +37,7 @@ func DefaultConfig(c core.VMConfig) Config {
 		"contracts": node("storage/filesystem", map[string]any{"directory": c.ContractStorageDir}, nil),
 		"runner":    node("runner/process", map[string]any{"timeout": c.ExecutionTimeout.String()}, nil),
 		"engine": node("engine/default", map[string]any{
-			"maxGasLimit": c.MaxGasLimit, "enableGasMetering": c.EnableGasMetering, "executionTimeout": c.ExecutionTimeout.String(),
-		}, map[string]any{"policy": "policy", "abi": "abi", "compiler": "compiler", "contracts": "contracts", "runner": "runner", "meters": "meters", "estimator": "profiler", "deployer": "deployer", "validator": "validator"}),
+			"maxCallDepth": c.MaxCallDepth, "maxGasLimit": c.MaxGasLimit, "enableGasMetering": c.EnableGasMetering, "executionTimeout": c.ExecutionTimeout.String(),
+		}, map[string]any{"state": "state", "policy": "policy", "abi": "abi", "compiler": "compiler", "contracts": "contracts", "runner": "runner", "meters": "meters", "estimator": "profiler", "deployer": "deployer", "validator": "validator"}),
 	}}
 }

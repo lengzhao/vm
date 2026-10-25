@@ -18,13 +18,24 @@ ContractAddress() Address
 Sender() Address
 ```
 
-### 2.2 事件
+### 2.2 默认 Object（已实现）
+
+```go
+DefaultObject() Object
+// Object.Get(key string) ([]byte, bool, error)
+// Object.Set(key string, value []byte) error
+// Object.Delete(key string) error
+```
+
+每合约一个默认对象，通过状态事务读写；失败/OOG/DryRun 不提交。下文多对象与所有权 API 是后置设计，详细语义见 [默认 Object](object_runtime.md)。
+
+### 2.3 事件
 
 ```go
 Log(eventName string, keyValues ...any)
 ```
 
-## 3. 后置接口
+## 3. 其他接口与后置设计
 
 ### 3.1 账户
 
@@ -33,7 +44,7 @@ User() Address
 Transfer(from, to Address, amount uint64) error
 ```
 
-### 3.2 对象存储
+### 3.2 多对象存储（后置）
 
 ```go
 CreateObject() Object
@@ -42,11 +53,13 @@ GetObjectWithOwner(owner Address) (Object, error)
 DeleteObject(id ObjectID)
 ```
 
-### 3.3 跨合约
+### 3.3 跨合约（已实现 C3）
 
 ```go
-Call(contract Address, function string, args ...any) ([]byte, error)
+Call(contract string, function string, args ...any) ([]byte, error)
 ```
+
+共享临时 store 与 Gas，仅根调用成功才发布，失败/DryRun 丢弃；详见 [跨合约调用](cross_contract.md)。
 
 ### 3.4 辅助
 
@@ -55,7 +68,7 @@ Assert(condition any)
 GetHash(data []byte) Hash
 ```
 
-## 4. Object 接口（后置）
+## 4. 多对象接口（设计方向，后置）
 
 ```go
 type Object interface {

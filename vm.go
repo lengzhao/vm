@@ -46,6 +46,10 @@ type VMEngine struct {
 }
 
 func normalize(c VMConfig) VMConfig {
+	if c.MaxCallDepth == 0 {
+		c.MaxCallDepth = core.DefaultMaxCallDepth
+	}
+
 	if c.ContractStorageDir == "" {
 		c.ContractStorageDir = "./contracts"
 	}
@@ -153,13 +157,6 @@ func (e *VMEngine) ExecuteContext(ctx context.Context, address, function string,
 	return out, nil
 }
 func (e *VMEngine) EstimateGas(a, f string, o *EstimateOptions) (*GasEstimate, error) {
-	if o != nil && o.DryRun {
-		out, err := e.ExecuteWithContext(a, f, o.CallCtx, o.Args...)
-		if err != nil {
-			return nil, err
-		}
-		return &GasEstimate{Estimated: out.GasConsumed, Mode: "dry_run"}, nil
-	}
 	return e.Engine.EstimateGas(context.Background(), a, f, o)
 }
 func (e *VMEngine) GetContract(a string) (*CompiledContract, error) {

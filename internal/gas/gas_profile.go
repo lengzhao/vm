@@ -18,6 +18,10 @@ var gasAPITable = map[string]uint64{
 	"Sender":          contractapi.GasSender,
 	"ContractAddress": contractapi.GasContractAddr,
 	"Log":             contractapi.GasLog,
+	"Call":            contractapi.GasCrossCall,
+	"Object.Get":      contractapi.GasObjectGet,
+	"Object.Set":      contractapi.GasObjectSet,
+	"Object.Delete":   contractapi.GasObjectDelete,
 }
 
 // BuildGasProfile 在注入前对原始合约源码做 AST 扫描，生成 core.GasProfile。
@@ -153,6 +157,13 @@ func collectDirectCall(
 		}
 	case *ast.SelectorExpr:
 		if apiPkg == "" {
+			return
+		}
+		// Without full type information, charge matching method names whenever
+		// contractapi is imported. This may overcount unrelated methods; indirect
+		// function-value calls remain outside this heuristic profile.
+		if _, known := gasAPITable["Object."+fun.Sel.Name]; known {
+			apiCalls["Object."+fun.Sel.Name]++
 			return
 		}
 		pkgIdent, ok := fun.X.(*ast.Ident)

@@ -10,5 +10,6 @@ import (
 	_ "github.com/lengzhao/vm/plugins/policy"
 	_ "github.com/lengzhao/vm/plugins/runner"
 	_ "github.com/lengzhao/vm/plugins/security"
+	_ "github.com/lengzhao/vm/plugins/state"
 	_ "github.com/lengzhao/vm/plugins/storage"
 )

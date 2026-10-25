@@ -1,0 +1,54 @@
+# 状态事务（C1）
+
+C1 提供 `core.StateStore` / `core.StateTransaction` 及 `state/memory` 插件。状态以 `StateKey{Contract, Key}` 为复合键，值为不透明 `[]byte`。合约地址和键允许空字符串，权限与地址合法性由调用方负责；不同合约的同名键互不影响。
+
+## 使用
+
+```go
+import (
+    "context"
+    "github.com/lengzhao/vm/core"
+    stateplugin "github.com/lengzhao/vm/plugins/state"
+)
+
+func update(ctx context.Context) error {
+    store, err := stateplugin.New(stateplugin.Config{})
+    if err != nil { return err }
+    tx, err := store.Begin(ctx)
+    if err != nil { return err }
+    defer tx.Rollback()
+    key := core.StateKey{Contract: "contract-A", Key: "counter"}
+    if err := tx.Set(ctx, key, []byte("1")); err != nil { return err }
+    // 同一个 store 上后续 Begin 才能读取已提交结果；宿主应保留 store。
+    return tx.Commit(ctx)
+}
+```
+
+PluginKit 可直接构建状态能力，或作为宿主插件的依赖：
+
+```go
+cfg := map[string]any{
+    "state": map[string]any{"use": "state/memory"},
+}
+store, _, err := build.Build[core.StateStore](ctx, cfg, "state")
+```
+
+上例还需导入 `github.com/lengzhao/pluginkit/build`，并导入 `plugins/state` 或空白导入 `plugins/all` 以注册插件。使用方依赖 `core.StateStore`，不要求生命周期、配置查询或其他 VM 能力。同一图中的同实例引用共享状态，不同构建得到独立 store。C2 已将状态作为依赖加入默认 Engine 图；`assembly.Build` 的根节点仍要求 Engine，独立状态构建使用 PluginKit。
+
+## 事务语义
+
+- `Begin(ctx)` 引用当时的不可变一致快照，不复制全库。后续提交发布新的 map，不改变已打开事务的读取视图；事务可读到自己的写入和删除。
+- `Get` 返回值、存在标志和错误。不存在与已存储的空值可区分；`nil` 与空切片均表示存在的零长度值。
+- `Set` / `Delete` 只改变事务本地覆盖。同键反复操作只保留最终操作。
+- `ReadSet` 记录实际调用 Get 的唯一键，含不存在的键及本地写入的键；Set/Delete 不隐式加入 ReadSet。`WriteSet` 记录每键最终值或删除标志。两者按地址、键的字符串字节顺序排序，结束后仍可检查。
+- 所有输入/输出字节及访问集合均与内部数据隔离，调用方可修改返回值。事务和 Store 支持并发方法调用；同一事务内并发读写的先后取决于锁顺序，宿主须控制业务执行顺序以保证回放一致。
+- `Commit(ctx)` 在锁内原子发布全部修改。带写入的事务要求 Begin 后没有其他写事务提交；否则返回 `core.ErrStateConflict`，任何键都不发布，包括不相交写集合也保守冲突。宿主需回滚后重新 Begin 并重执行业务，不能盲目重用旧快照。
+- 纯读事务提交不改变状态版本，可在旧快照上成功结束。删除不存在键等带写操作也推进版本。版本使用内存身份令牌，不存在整数溢出回绕。
+- 成功提交结束事务，后续读写及 Commit 返回 `core.ErrStateClosed`。Commit 失败保留未结束事务，便于检查集合及 Rollback；不能假设失败提交会自动清理。
+- `Rollback()` 丢弃待提交修改并结束事务，重复调用或提交后调用均成功。结束后保留访问集合供检查，但不再保留完整读取快照。
+
+## 取消与边界
+
+Begin 的 context 约束整个事务；每次读写/提交还检查该操作的 context。预取消、等待锁期间取消或在准备提交期间观察到取消，均不发布数据；与最终发布并发的取消按提交时的线性化顺序处理。单次操作 context 取消不终止仍有效的 Begin context。错误保留 `context.Canceled` / `context.DeadlineExceeded`，可用 `errors.Is` 判断。Rollback 不使用 context，确保宿主请求取消后仍可清理。
+
+内存实现的 Begin 共享不可变快照，写事务 Commit 复制全量键映射并复用未修改的值；输入输出字节仍独立复制。不持久化、不提供跨进程协调。C2 已将 Engine / ProcessRunner / contractapi 的默认 Object 接入事务，失败、OOG、DryRun 不提交，事件仅随成功提交返回，见 [Object 与执行](object_runtime.md)；跨合约共享临时 store 已由 C3 接入，见 [跨合约调用](cross_contract.md)，细粒度读写集合冲突检测和确定性并行执行在 D3。

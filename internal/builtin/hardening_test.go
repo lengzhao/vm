@@ -35,7 +35,7 @@ func TestContractRuntimeSymbolsRejected(t *testing.T) {
 
 func TestRunnerPreservesLargeNumbers(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "contract")
-	payload := `{"version":1,"ok":true,"result":{"n":18446744073709551615},"gas":11,"events":[{"Name":"E","Fields":{"n":9007199254740993}}]}`
+	payload := `{"version":3,"ok":true,"result":{"n":18446744073709551615},"gas":11,"events":[{"Name":"E","Fields":{"n":9007199254740993}}]}`
 	if err := os.WriteFile(p, []byte("#!/bin/sh\nprintf '%s' '"+payload+"'\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestCallContextIsNotModified(t *testing.T) {
 
 func TestRunnerRejectsMultipleResponses(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "contract")
-	os.WriteFile(p, []byte("#!/bin/sh\necho '{\"version\":1,\"ok\":true,\"result\":1} {\"ok\":true,\"result\":2}'\n"), 0755)
+	os.WriteFile(p, []byte("#!/bin/sh\necho '{\"version\":3,\"ok\":true,\"result\":1} {\"ok\":true,\"result\":2}'\n"), 0755)
 	_, err := NewProcessRunner(5*time.Second).Run(context.Background(), sealedTestArtifact(t, &CompiledContract{ProtocolVersion: ProtocolVersion, ExecutablePath: p}), CallRequest{Function: "F"})
 	if err == nil {
 		t.Fatal("multiple responses accepted")

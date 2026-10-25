@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/lengzhao/vm/abi"
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/state"
 	"testing"
 )
 
@@ -38,7 +39,7 @@ func (*depsStub) ValidateArtifact(ctx context.Context, _ *core.CompiledContract)
 }
 func testEngine(t *testing.T, d *depsStub) *Engine {
 	t.Helper()
-	e, err := New(Options{}, Deps{Policy: d, ABI: d, Compiler: d, Deployer: d, Contracts: d, Runner: d, Meters: d, Estimator: d, Validator: d})
+	e, err := New(Options{}, Deps{State: state.New(), Policy: d, ABI: d, Compiler: d, Deployer: d, Contracts: d, Runner: d, Meters: d, Estimator: d, Validator: d})
 	if err != nil {
 		t.Fatal(err)
 	}

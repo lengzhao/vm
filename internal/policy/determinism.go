@@ -12,7 +12,7 @@ import (
 
 // DeterministicPolicyVersion identifies the restricted source-language policy.
 // Changing acceptance or execution semantics requires a new version.
-const DeterministicPolicyVersion = "go-deterministic-v1"
+const DeterministicPolicyVersion = "go-deterministic-v3-call"
 
 func reviewDeterministic(source string, reviewer core.SecurityReviewer) error {
 	if strconv.IntSize != 64 {

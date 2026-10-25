@@ -10,7 +10,8 @@ type Event struct {
 }
 
 // Host 是链宿主提供给 VM 的最小运行时接口。
-// MVP 仅覆盖只读上下文与事件日志；Object / Transfer / Call 后置。
+// Host 提供只读上下文与事件；Object 使用独立作用域能力 ObjectStore。
+// Transfer / Call 后置。
 type Host interface {
 	BlockHeight() uint64
 	BlockTime() uint64

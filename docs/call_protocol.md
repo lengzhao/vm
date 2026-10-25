@@ -1,6 +1,6 @@
-# ABI 与调用协议 v1
+# ABI v1 与调用协议 v3
 
-本项目当前只支持 ABI schema v1 和调用协议 v1。没有兼容旧格式的分支；旧产物、缺失版本或未知版本必须重新编译部署。
+本项目当前只支持 ABI schema v1 和调用协议 v3。没有兼容旧格式的分支；旧产物、缺失版本或未知版本必须重新编译部署。
 
 ## ABI 类型契约
 
@@ -19,40 +19,40 @@ ABI JSON 顶层必须包含 `"version":1`。协议版本同时保存在 Compiled
 ## 请求
 
 ```json
-{"version":1,"function":"Add","args":[10,20]}
+{"version":3,"function":"Add","args":[10,20]}
 ```
 
 function 是公开包级函数名。args 必须是数组，数量与 ABI 严格一致。标量值必须使用对应 JSON 原生类型：整数/浮点使用数字，bool 使用布尔，string 使用字符串。
 
 null、数值字符串、溢出整数、缺参和多参均返回 INVALID_ARGUMENTS。不隐式转换类型。Go 调用方应使用 int64/uint64/json.Number 传递大整数，避免在发送前就经过 float64 丢失精度。
 
-请求最多 1 MiB。未知字段、多条请求或非法结构返回 INVALID_REQUEST。Runner 自动给 Go CallRequest 加入当前协议版本；直接调用产物的客户端必须显式填写 version。
+请求以一行 JSON 发送，最多 1 MiB（不含结尾换行）。未知字段、多条请求或非法结构返回 INVALID_REQUEST。Runner 自动给 Go CallRequest 加入当前协议版本；直接调用产物的客户端必须显式填写 version。
 
 ## 响应
 
 成功：
 
 ```json
-{"version":1,"ok":true,"result":30,"gas":11}
+{"version":3,"ok":true,"result":30,"gas":11}
 ```
 
 失败：
 
 ```json
-{"version":1,"ok":false,"code":"INVALID_ARGUMENTS","error":"wrong argument count for Add","gas":10}
+{"version":3,"ok":false,"code":"INVALID_ARGUMENTS","error":"wrong argument count for Add","gas":10}
 ```
 
 version、ok、gas 必填。仅允许一个 JSON 响应，未知字段与矛盾状态均拒绝。失败必须有已知 code 和非空 error，不能夹带业务结果；成功不能包含错误码或错误文本。
 
 业务返回值：无返回值/仅 nil error → null；单值 → 标量；多值 → 数组。NaN/Inf 或其他不能编码的结果/事件返回 INVALID_RESULT，不再悄悄丢失响应。
 
-通用 JSON 数值在 Runner 中解码为 json.Number，因此返回值和事件保留 uint64/int64 精度。每个输出流最多 1 MiB，超限取消直接进程。
+通用 JSON 数值在 Runner 中解码为 json.Number，因此返回值和事件保留 uint64/int64 精度。每个输出流最多 1 MiB，超限取消直接进程。最终响应前可包含受控 Object / Call 请求帧，由 Runner 处理后剥离；宿主回复与帧限制见 [Object 协议](object_runtime.md)。
 
 ## 稳定错误码
 
 合约响应可能返回 INVALID_REQUEST、INVALID_ARGUMENTS、UNKNOWN_FUNCTION、CONTRACT_ERROR、CONTRACT_PANIC、GAS_LIMIT_EXCEEDED、UNSUPPORTED_VERSION、INVALID_RESULT。
 
-宿主还区分 INVALID_RESPONSE、EXECUTION_TIMEOUT、EXECUTION_CANCELED、OUTPUT_LIMIT_EXCEEDED、PROCESS_FAILURE，以及函数签名校验的 UNSUPPORTED_ABI、产物完整性校验的 ARTIFACT_INTEGRITY 和部署地址已有不同或损坏记录的 DEPLOYMENT_CONFLICT。构建、存储、源码安全审查仍保留各自的错误原因；本节不承诺把所有文件系统和编译错误都改成执行错误。
+宿主还区分 INVALID_RESPONSE、EXECUTION_TIMEOUT、EXECUTION_CANCELED、OUTPUT_LIMIT_EXCEEDED、PROCESS_FAILURE，以及函数签名校验的 UNSUPPORTED_ABI、产物完整性校验的 ARTIFACT_INTEGRITY 、部署地址已有不同或损坏记录的 DEPLOYMENT_CONFLICT，以及状态后端错误 STATE_FAILURE 和事务提交冲突 STATE_CONFLICT，以及跨合约 CALL_FAILURE、CALL_DEPTH_EXCEEDED、REENTRANCY。构建、存储、源码安全审查仍保留各自的错误原因；本节不承诺把所有文件系统和编译错误都改成执行错误。
 
 Go 调用方使用 errors.As 获取 *vm.ExecutionError 并比较 Code。Unwrap 保留底层原因；取消和超时可分别用 errors.Is(err, context.Canceled / context.DeadlineExceeded) 检查。诊断文本不作为程序分支依据。
 
@@ -62,4 +62,6 @@ Gas 超限由运行时专用 GasLimitError 标识；普通 panic 的文本即使
 
 静态 ABI 只收集真实导入绑定的 contractapi.Log，支持普通别名、字符串字面量和直接字符串常量。局部对象的同名 Log 不被误识别。
 
-简单参数、显式类型和转换可以推断字段类型；无法静态确认时记录 unknown。动态事件名、帮助函数中的间接事件不保证出现在静态 ABI 中。ExecuteResult.Events 才是一次调用实际事件的依据；失败调用的事件只是诊断，当前尚无事务提交机制。
+简单参数、显式类型和转换可以推断字段类型；无法静态确认时记录 unknown。动态事件名、帮助函数中的间接事件不保证出现在静态 ABI 中。ExecuteResult.Events 才是一次调用实际事件的依据；Engine 仅在成功提交后返回事件；失败调用清除数据/事件，DryRun 不发布事件。直接 Runner 的原始事件仅供诊断。
+
+跨合约调用帧、共享 Gas 与事件顺序见 [跨合约协议](cross_contract.md)。

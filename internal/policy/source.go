@@ -35,7 +35,7 @@ func (p *Source) Review(source string) error {
 	return security.ReviewRuntimeBoundary(file)
 }
 
-const developmentSourcePolicy = "go-development-v1"
+const developmentSourcePolicy = "go-development-v3-call"
 
 type Options struct {
 	EnableSecurity bool

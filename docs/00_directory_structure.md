@@ -13,6 +13,9 @@ docs/
 ├── plugins.md                   # PluginKit 配置、扩展与生命周期
 ├── artifact_manifest.md         # 产物清单、版本与摘要校验
 ├── deployment.md                # 确定性部署、输入与冲突规则
+├── state_transactions.md        # 状态快照、提交/回滚与内存插件
+├── object_runtime.md            # 默认 Object 与执行事务、双向协议
+├── cross_contract.md            # 共享临时 store/Gas、深度与重入
 ├── modular_architecture_design.md
 ├── default_library.md
 ├── host_runtime.md              # Host Runtime MVP 设计
@@ -67,6 +70,9 @@ vm/
 - [contract_processing_flow.md](detailed_design/contract_processing_flow.md)
 
 ### 3.3 规范
+- [state_transactions.md](state_transactions.md)
+- [object_runtime.md](object_runtime.md)
+- [cross_contract.md](cross_contract.md)
 - [default_library.md](default_library.md)
 - [execution_environment.md](execution_environment.md)
 - [gas_metering.md](gas_metering.md)

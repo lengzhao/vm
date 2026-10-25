@@ -1,4 +1,4 @@
-# 确定性源码策略 v1
+# 确定性源码策略 v3
 
 ## 定位与启用
 
@@ -15,7 +15,7 @@ engine := vm.NewVMEngine(vm.VMConfig{
 
 启用后 Compile 和 GenerateABI 始终运行基础安全审查与确定性策略，即使 EnableSecurityChecks 为 false。独立编译器可用 NewContractCompilerWithPolicy(dir, true, true)。ReviewDeterministic 可用于预检查，后续编译仍负责 Go 类型检查与入口可调用性。
 
-策略版本为 `go-deterministic-v1`。接受的源码能力或执行语义改变时应升级策略版本。严格模式的 Deploy / Execute 拒绝开发模式或缺少策略标签的旧产物，需用严格模式重新编译部署。SourcePolicy 存入 metadata.json；不同策略使用独立编译缓存。
+策略版本为 `go-deterministic-v3-call`。接受的源码能力或执行语义改变时应升级策略版本。严格模式的 Deploy / Execute 拒绝开发模式或缺少策略标签的旧产物，需用严格模式重新编译部署。SourcePolicy 存入 metadata.json；不同策略使用独立编译缓存。
 
 ## 允许的子集
 
@@ -24,7 +24,7 @@ engine := vm.NewVMEngine(vm.VMConfig{
 - import 仅允许 strconv、errors、github.com/lengzhao/vm/contractapi，允许普通别名，不允许点导入和空导入。
 - strconv 仅开放整数/布尔的 Format、Parse、Append，以及 Quote / Unquote / rune 引用与字符分类；完整符号列表以 determinism.go 为准。ParseInt/ParseUint 的 bitSize=0 采用本策略的 64 位布局。
 - errors 仅允许 New。
-- contractapi 仅允许 BlockHeight、BlockTime、Sender、ContractAddress、Log。
+- contractapi 仅允许 BlockHeight、BlockTime、Sender、ContractAddress、Log、DefaultObject、Call 及对象的 Get/Set/Delete。
 - 链时间、发送方、区块高度等必须来自 CallContext / Host 的值快照，不读取操作系统时间。
 
 ## 拒绝的能力
@@ -42,7 +42,7 @@ engine := vm.NewVMEngine(vm.VMConfig{
 
 严格模式将构建目标固定为本 VM 的 GOOS / GOARCH，要求 64 位，禁用 CGO；清除 GOFLAGS、GOEXPERIMENT，关闭外部 go.work，并使用 local 工具链选择。它不会继承调用方设置的交叉编译目标。
 
-验收是同一受信任产物、相同参数和 Host 值快照，重复调用产生相同的返回数据、事件和 Gas。B4 已使用显式链标识、部署者、nonce、salt 与清单摘要派生地址，见 [确定性部署](deployment.md)。地址规则不依赖时钟；宿主仍需负责发起者认证、nonce 账本与状态提交。
+验收是同一受信任产物、相同参数、Host 值快照和状态快照，重复调用产生相同的返回数据、事件和 Gas。B4 已使用显式链标识、部署者、nonce、salt 与清单摘要派生地址，见 [确定性部署](deployment.md)。地址规则不依赖时钟；宿主仍需负责发起者认证、nonce 账本与状态提交。
 
 B3 已固定实际 Go 版本及目标环境，并记录工具链摘要、构建清单、二进制/ABI/画像摘要与 runtime/Gas 规则版本；见 [产物清单](artifact_manifest.md)。来源认证、独立验证完整工具链发行内容与跨节点兼容性仍后置。SourcePolicy 是受信任生产者的声明；即使摘要一致，也不证明外部二进制安全。
 

@@ -9,7 +9,11 @@ var embeddedContractAPISource = contractapi.Source
 var embeddedContractAPIGasSource = contractapi.GasSource
 var embeddedContractAPIProtocolSource = contractapi.ProtocolSource
 
-const compilerBuildID = "pipeline-v11-artifact-manifest"
+var embeddedContractAPIObjectSource = contractapi.ObjectSource
+
+var embeddedContractAPICallSource = contractapi.CallSource
+
+const compilerBuildID = "pipeline-v13-cross-contract"
 
 //go:embed entry.go.tmpl
 var contractEntryTemplate string

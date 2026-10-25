@@ -2,6 +2,7 @@ package main
 
 import (
  __vmBytes "bytes"
+ __vmBufio "bufio"
  __vmJSON "encoding/json"
  __vmFmt "fmt"
  __vmIO "io"
@@ -29,6 +30,7 @@ type __vmCallResponse struct {
 }
 
 func __vmWriteResponse(resp __vmCallResponse) {
+ if failure:=__vmAPI.CallFailure();resp.OK && failure!=nil {resp=__vmCallResponse{OK:false,Code:__vmAPI.CodeCallFailure,Error:failure.Error()}}
  resp.Version = __vmAPI.ProtocolVersion
  resp.Gas = __vmAPI.GasUsed()
  resp.Events = __vmAPI.DrainEvents()
@@ -64,8 +66,11 @@ func main() {
  if raw:=__vmOS.Getenv("VM_GAS_LIMIT");raw!=""{if v,err:=__vmStrconv.ParseUint(raw,10,64);err==nil{limit=v}}
  __vmAPI.InitGas(limit)
  __vmAPI.ConsumeGas(__vmAPI.GasEntryBase)
- data,err:=__vmIO.ReadAll(__vmIO.LimitReader(__vmOS.Stdin,(1<<20)+1))
- if err!=nil{__vmFail(__vmAPI.CodeInvalidRequest,err.Error())}
+ reader:=__vmBufio.NewReader(__vmIO.LimitReader(__vmOS.Stdin,(2<<20)+2))
+ data,err:=reader.ReadBytes('\n')
+ __vmAPI.InitObjectIO(reader,__vmOS.Stdout)
+ data=__vmBytes.TrimSuffix(data,[]byte("\n"))
+ if err!=nil && err!=__vmIO.EOF{__vmFail(__vmAPI.CodeInvalidRequest,err.Error())}
  if len(data)>1<<20 {__vmFail(__vmAPI.CodeInvalidRequest,"request exceeds 1 MiB")}
  var req __vmCallRequest
  decoder:=__vmJSON.NewDecoder(__vmBytes.NewReader(data));decoder.DisallowUnknownFields()

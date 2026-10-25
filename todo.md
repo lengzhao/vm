@@ -8,7 +8,8 @@
 - 安全审查、ABI、Gas 控制点注入、集成测试已可用
 - Host Runtime MVP 已接入：`contractapi` + `ExecuteWithContext` + 事件回传
 - 加固：禁止宿主根包 import、编译缓存 + embed contractapi、最小 env、CallContext 零值语义、结果自包含
-- **尚未完成**：Object 存储、跨合约 Call、完整沙箱
+- 默认 Object 已接入内存状态事务；失败、OOG、DryRun 无提交，事件仅随成功提交返回
+- **尚未完成**：持久化状态后端、多 Object/所有权、完整沙箱
 
 ## 开发计划
 
@@ -28,7 +29,9 @@
 - [x] 只读链上下文：BlockHeight / BlockTime / Sender / ContractAddress
 - [x] 事件日志 Log（contractapi + JSON events）
 - [x] ExecuteWithContext / GetLastEvents
-- [ ] Object 存储与跨合约 Call 后置
+- [x] 默认 Object 存储与执行事务
+- [x] 跨合约 Call 与整链临时 store / Gas
+- [ ] 多 Object / 所有权后置
 
 ### 第六阶段：Gas 模型推进（已完成）
 - [x] 明确入口 / 函数 / 循环计费点基线
@@ -67,9 +70,9 @@
 - [x] B2 统一 ABI 类型、错误码、协议版本
 - [x] B3 固定工具链及产物清单、摘要校验、规则版本
 - [x] B4 确定性部署输入与地址派生
-- [ ] C1 状态事务接口与快照/提交/回滚
-- [ ] C2 Object 存储，失败及 DryRun 无提交
-- [ ] C3 跨合约共享事务/Gas、重入与深度限制
+- [x] C1 状态事务接口与快照/提交/回滚
+- [x] C2 Object 存储，失败及 DryRun 无提交
+- [x] C3 跨合约共享事务/Gas、重入与深度限制
 - [ ] D1 编译沙箱与执行沙箱，资源限制与负例验证
 - [ ] D2 对比受限原生后端与 WASM 原型后确定生产后端
 - [ ] D3 基于读写集合的冲突检测及确定性并行执行
@@ -139,3 +142,40 @@
 - 全量普通测试、全量 race、go vet、git diff --check 均通过，独立审查及增量复核无 P1/P2。既有响应字段测试的 1 秒预算在隔离重复 20 次时也复现超时，现仅将该格式测试预算调整为相邻协议测试一致的 5 秒，重复 20 次通过；生产超时逻辑及专门取消/超时测试的短预算未改。
 - 文档：docs/deployment.md；同步接口示例、插件指南、设计文档与 README。Sender 认证、账户 nonce 账本及状态事务仍由后续宿主集成负责。
 - 变更保留工作区，未提交。当前下一项：C1 状态事务接口与快照/提交/回滚。
+
+
+### 第六批验收记录：C1 完成
+
+- 新增 core.StateStore / StateTransaction、StateKey / StateWrite 及可 errors.Is 判断的关闭/冲突错误；快照内读写、删除、存在标志和排序读写集合形成独立状态契约。
+- 新增 state/memory 插件，以全量快照和本地写覆盖实现隔离；原子提交使用全局版本身份令牌拒绝过期写事务，纯读事务不推进版本。输入输出及集合均复制，Store 和事务支持并发方法调用。
+- Begin context 贯穿事务，操作 context 可进一步限制；失败提交不发布任何键，Rollback 清理不依赖有效 context。结束后拒绝读写/提交，Rollback 幂等，保留访问集合供检查。
+- 新增 13 个测试，覆盖快照/自身写入、空值及缺失、删除/回滚、重复结束、字节与集合副本、合约命名空间、保守冲突、取消/deadline、并发提交/回滚、完整快照可见性及 PluginKit 图隔离与最小契约消费。
+- 最终代码固定后，全量普通测试、全量 race、go vet、git diff --check 通过；独立审查及增量文档复核无 P1/P2。首轮普通测试期间补加测试 import 造成依赖扫描与编译不一致，固定文件后完整重跑通过，未修改生产代码绕过。
+- 文档：docs/state_transactions.md，插件指南、README 和文档目录同步。内存实现不持久化；细粒度读写冲突检测后置 D3。
+- 当前变更保留 dev 工作区，未提交。下一项 C2：Object 与 Engine/Runner 接入，保证失败、OOG、DryRun 无状态提交及事件一致性；C1 尚未接入执行路径。
+
+
+### 第七批验收记录：C2 完成
+
+- 新增 contractapi.DefaultObject().Get/Set/Delete，按实际 ExecutionRequest.Address 绑定默认对象字段；返回字节与存在标志，隔离合约命名空间，不扩大 Host 接口。ObjectStore 只暴露字段读写，Runner 无地址选择与提交能力。
+- Engine 注入 StateStore，每次执行获取独立事务；仅成功结果且 Gas 验证通过后提交。业务失败、panic、OOG、取消/超时、空响应、宿主错误及提交冲突均回滚，失败结果清除 Data/Events。原生与根包 DryRun 都执行后回滚，不发布本次事件；回滚错误与原错误合并。
+- ProcessRunner 接入协议 v2 的逐行双向宿主调用，保留 stdout/stderr 各 1 MiB 限制，另限制累计回复 1 MiB、1024 次宿主调用、UTF-8 字段名 1024 字节与单值 64 KiB。Get/Set/Delete 固定扣 5/10/5 Gas，宿主检查消息与最终 Gas 下界及上限。
+- 审查发现并由失败测试复现：后代保留 stdin 读端时，取消不能解除同步大消息写入。现通过 context.AfterFunc 主动关闭输入写端，补齐初始大请求与大字段回复的取消回归，保留独立子进程启动同步和取消预算。
+- 协议升级为 2，runtime/Gas 为 contractapi-v2-object / go-gas-v2-object，流水线为 pipeline-v12-object-runtime，源码策略为 go-development-v2-object / go-deterministic-v2-object。新增 Object 源码加入内嵌、构建缓存与清单摘要；旧产物需重新编译部署，ABI/Profile schema 保持 1。
+- 默认配置和 YAML 接入 state/memory；新增仅 Begin 状态插件替换验证。16 个新增测试函数覆盖实际 Object 跨调用读写/删除/空值、失败与 OOG/DryRun 无提交、取消、确定性回放、命名空间、运行时符号权限、事务后端/冲突/Gas/回滚错误、RPC 格式/Gas/资源限制及管道取消。
+- 全量普通测试、全量 race、go vet、git diff --check 通过；两个独立审查及增量复核无剩余 P1/P2。
+- 文档：docs/object_runtime.md；同步状态事务、插件、调用协议、Host、Gas、确定性策略、产物清单与 README。内存状态不跨 VM 实例/进程重启持久化，多对象/所有权仍后置。
+- C1/C2 变更保留 dev 工作区，未提交。当前下一项 C3：跨合约共享事务/Gas、重入与深度限制。
+
+
+### 第八批验收记录：C3 完成
+
+- 按用户确认的简化方案，将最外层 Begin 返回的事务当作整链临时 store；所有嵌套帧读写同一份覆盖，只有最外层成功后一次性原子 Commit，失败/DryRun 直接丢弃。不增加保存点、嵌套提交或逐键补偿写入。
+- 新增 contractapi.Call(address,function,args...) 与 core.ContractCaller 作用域能力；目标加载与产物校验不绕过。子失败粘性保留，调用方忽略 error 也不能提交；本地参数编码/通道错误同样阻止入口成功响应。
+- 父报告调用点已用 Gas，子仅获得剩余额度，子树实际消耗计入父 runtime，根计量一次。固定 Call 成本 10，验证累计下界、剩余量、最终少报和 uint64 溢出；零或不足入口的剩余预算不变成无限额。
+- 默认深度 8（根为第 1 层），配置范围 1–32；禁止栈内自调用及 A→B→A，已返回地址可顺序重调。子 Sender 是真实直接调用合约，目标 ContractAddress 及存储命名空间不可被父展示地址覆盖；沿用根区块快照与取消/截止时间。
+- Call 在调用点移交父事件前缀，按前缀/子树/后续事件拼接。整链跨调用最多 1024 次，事件编码累计 1 MiB，子结果 JSON 最多 64 KiB；保留每进程消息和回复预算、取消关闭 stdin。
+- 协议 3、contractapi-v3-call / go-gas-v3-call、pipeline-v13-cross-contract、go-development-v3-call / go-deterministic-v3-call；ABI/Profile schema 保持 1，内嵌/缓存/清单纳入 Call 源码。旧产物需重编译部署。新增 CALL_FAILURE / CALL_DEPTH_EXCEEDED / REENTRANCY 错误分类。
+- 新增 17 个测试函数，覆盖临时写入可见、父子统一发布/丢弃、忽略失败、DryRun、事件顺序、大整数转发、上下文与 Sender、8/9 层边界、直接/间接重入、顺序重调、严格确定性回放、Gas 精确一次/预算/少报/溢出、资源上限、子调用取消、畸形消息与本地编码错误。
+- 全量普通测试、全量 race、go vet、git diff --check 通过；两位独立审查及增量复核无 P1/P2。文档：docs/cross_contract.md，并同步协议、Host、Object、状态事务、Gas、策略、产物清单、插件指南及 README。
+- C1–C3 变更保留 dev 工作区，未提交。当前下一项 D1：编译沙箱与执行沙箱、资源限制及负例验证。

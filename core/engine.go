@@ -7,6 +7,7 @@ import (
 
 // VMConfig represents the configuration for the VM
 type VMConfig struct {
+	MaxCallDepth         int // 0 uses 8; valid explicit range 1–32.
 	MaxGasLimit          uint64
 	EnableSecurityChecks bool
 	// RequireDeterminism enforces the versioned source profile, independently of EnableSecurityChecks.

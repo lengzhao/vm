@@ -1,11 +1,12 @@
 package contractapi
 
 // ProtocolVersion is the only supported wire protocol.
-const ProtocolVersion = 1
+const ProtocolVersion = 3
 
 type ErrorCode string
 
 const (
+	CodeCallFailure        ErrorCode = "CALL_FAILURE"
 	CodeInvalidRequest     ErrorCode = "INVALID_REQUEST"
 	CodeInvalidArguments   ErrorCode = "INVALID_ARGUMENTS"
 	CodeUnknownFunction    ErrorCode = "UNKNOWN_FUNCTION"

@@ -23,6 +23,9 @@
 5. **Gas计费模块**：宿主计量 + `contractapi` 统一扣费 + `gas_profile.json` / `EstimateGas`
 6. **合约管理模块**：部署、存储和查询合约产物（含 GasProfile）
 7. **Host Runtime / contractapi**：只读链上下文与事件日志（MVP）
+8. **状态事务基础**：可替换的 `state/memory` 插件，支持快照、读写集合及原子提交/回滚；默认 Object 已接入，失败/OOG/DryRun 无提交，见 [状态事务](docs/state_transactions.md)
+
+9. **跨合约调用**：共享临时 store 与 Gas、整链成功原子提交、禁止重入与深度限制，见 [跨合约调用](docs/cross_contract.md)
 
 ### 安全机制
 - 关键字白名单机制：限制危险关键字的使用
@@ -185,16 +188,16 @@ go build .
 
 ## 可选确定性源码策略
 
-设置 `VMConfig.RequireDeterminism=true` 启用 `go-deterministic-v1`。它强制安全审查，禁止机器时间、浮点/指针观测和直接输出，仅开放受限值计算及链上下文 API；严格模式拒绝没有匹配策略标签的旧产物。默认使用开发模式，确定性策略需显式启用。
+设置 `VMConfig.RequireDeterminism=true` 启用 `go-deterministic-v3-call`。它强制安全审查，禁止机器时间、浮点/指针观测和直接输出，仅开放受限值计算及链上下文 API；严格模式拒绝没有匹配策略标签的旧产物。默认使用开发模式，确定性策略需显式启用。
 
 详见 [确定性源码策略](docs/deterministic_execution.md)。该策略不等同于完整沙箱或完整共识执行规范；工具链固定、产物摘要及[确定性部署地址](docs/deployment.md)已实现；来源认证和状态事务仍后置。
 
 
 ## ABI 与调用协议
 
-当前仅支持 ABI schema v1 / 调用协议 v1，不兼容无版本旧产物；升级后重新 Compile / Deploy。统一支持整数、布尔、字符串与开发模式浮点标量，末位 error 表示调用失败。参数严格匹配 JSON 类型及数量；错误通过 ExecutionError.Code 分类。
+当前仅支持 ABI schema v1 / 调用协议 v3，不兼容无版本旧产物；升级后重新 Compile / Deploy。统一支持整数、布尔、字符串与开发模式浮点标量，末位 error 表示调用失败。参数严格匹配 JSON 类型及数量；错误通过 ExecutionError.Code 分类。
 
-详见 [ABI 与调用协议 v1](docs/call_protocol.md)。
+详见 [ABI 与调用协议 v3](docs/call_protocol.md)。
 
 ## PluginKit 插件化
 

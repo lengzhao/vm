@@ -287,6 +287,8 @@ func (c *Compiler) buildExecutable(parent context.Context, tc toolchain, record 
 	entryPath := filepath.Join(buildDir, "entry.go")
 	apiPath := filepath.Join(buildDir, "contractapi", "contractapi.go")
 	apiGasPath := filepath.Join(buildDir, "contractapi", "gas.go")
+	apiCallPath := filepath.Join(buildDir, "contractapi", "call.go")
+	apiObjectPath := filepath.Join(buildDir, "contractapi", "object.go")
 	apiProtocolPath := filepath.Join(buildDir, "contractapi", "protocol.go")
 	apiModPath := filepath.Join(buildDir, "contractapi", "go.mod")
 	modPath := filepath.Join(buildDir, "go.mod")
@@ -301,6 +303,12 @@ func (c *Compiler) buildExecutable(parent context.Context, tc toolchain, record 
 		return nil, err
 	}
 	if err := os.WriteFile(apiGasPath, []byte(embeddedContractAPIGasSource), 0644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(apiCallPath, []byte(embeddedContractAPICallSource), 0644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(apiObjectPath, []byte(embeddedContractAPIObjectSource), 0644); err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(apiProtocolPath, []byte(embeddedContractAPIProtocolSource), 0644); err != nil {
@@ -447,6 +455,8 @@ func generateBuildHash(sourceCode string) string {
 	_, _ = h.Write([]byte(embeddedContractAPIGasSource))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(embeddedContractAPIProtocolSource))
+	_, _ = h.Write([]byte(embeddedContractAPIObjectSource))
+	_, _ = h.Write([]byte(embeddedContractAPICallSource))
 	_, _ = h.Write([]byte(contractEntryTemplate))
 	_, _ = h.Write([]byte(sourceCode))
 	return hex.EncodeToString(h.Sum(nil))

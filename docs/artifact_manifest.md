@@ -10,7 +10,7 @@
 - `build.compiler_version`：编译流水线版本；当前为 `pipeline-v11-artifact-manifest`。
 - `build.toolchain`：实际 Go 版本、Go 可执行文件 SHA-256、GOOS/GOARCH、CGO 开关及固定构建参数。
 - `build.source_sha256`：原始源码字节摘要；`injected_sha256` 和 `entry_sha256` 是实际插桩源码及生成入口摘要。
-- `build.runtime_version` / `gas_version`：当前为 `contractapi-v1` / `go-gas-v1`；`runtime_sha256` 绑定内嵌的 contractapi、Gas 与协议源码。
+- `build.runtime_version` / `gas_version`：当前为 `contractapi-v3-call` / `go-gas-v3-call`；`runtime_sha256` 绑定内嵌的 contractapi、Object、Call、Gas 与协议源码。
 - `binary_sha256`：完整可执行文件摘要。
 - `abi_sha256` / `gas_profile_sha256`：ABI、GasProfile 的规范 JSON 摘要；没有画像时摘要输入为 JSON `null`。
 - `metadata_sha256`：以下对象的规范 JSON 摘要，字段顺序依次为 `source_hash`、`source_policy`、`guarantees`、`protocol_version`，值来自 CompiledContract。

@@ -31,6 +31,8 @@ type Host interface {
     Log(eventName string, keyValues ...any)
 }
 
+// 状态读写通过独立 core.ObjectStore 注入 Runner，不扩大 Host 接口。
+
 // 指针字段区分「未设置」与零值（例如 BlockHeight=0）
 type CallContext struct {
     Host            Host
@@ -58,9 +60,11 @@ BlockTime() uint64
 Sender() string
 ContractAddress() string
 Log(eventName string, keyValues ...any)
+DefaultObject() Object // Get / Set / Delete，见 object_runtime.md
+Call(address, function string, args ...any) ([]byte, error)
 
 // 以下 Gas 符号仅供生成的运行时入口使用，合约源码不可引用。
-// 合约只能使用上述五个业务 API（默认库内部按表扣费）。
+// 合约只能使用上述业务 API（默认库内部按表扣费）。
 InitGas(limit uint64)
 ConsumeGas(amount uint64)
 GasUsed() uint64
@@ -71,7 +75,9 @@ ResetGas()
 |------|-----|------|
 | BlockHeight / BlockTime / Sender / ContractAddress | 1 | 已实现 |
 | Log | 2 | 已实现 |
-| Object / Transfer / Call | — | 后置 |
+| DefaultObject().Get / Set / Delete | 5 / 10 / 5 | 已实现 |
+| Call | 10 + 子树实际 Gas | 已实现 |
+| Transfer | — | 后置 |
 
 ## 4. 通信方式（当前）
 
@@ -81,12 +87,12 @@ ResetGas()
    - `VM_GAS_LIMIT`
 2. 合约通过 `contractapi` 读取上下文并 `Log` 事件
 3. entry 在 JSON 响应中附带 `events`
-4. Engine 将事件写入 `ExecuteResult`；`GetLastEvents()` 仅在根包兼容门面保留
+4. Engine 在事务提交成功后将事件写入 `ExecuteResult`；`GetLastEvents()` 仅在根包兼容门面保留
 5. **不再**把 events 回放到 `Host.Log`，避免重复记账
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "ok": true,
   "result": [0, "alice", "contract_xxx"],
   "gas": 12,
@@ -98,8 +104,9 @@ ResetGas()
 
 ## 5. 后置
 
-- Object 存储 / Transfer / Call（含对应 Gas）
-- 执行中双向 RPC/IPC
+- 多 Object、所有权转移 / Transfer（含对应 Gas）
+
+默认 Object 已通过双向 RPC 接入，失败与 DryRun 回滚，详见 [Object 与事务](object_runtime.md)。
 
 ## 6. 验收
 
@@ -108,7 +115,8 @@ ResetGas()
 - [x] 事件以 `ExecuteResult` 自包含返回
 - [x] 禁止合约 import 宿主根包
 - [x] 默认库只读 + Log 按表扣费
-- [x] Object / Call 明确后置
+- [x] 默认 Object 读写与事务提交/回滚、DryRun 无提交
+- [x] 多 Object / Transfer 明确后置；Call 已接入共享临时 store
 
 
 ## 调用隔离约定

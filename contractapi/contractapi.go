@@ -1,4 +1,4 @@
-// Package contractapi 是合约侧默认库（MVP）：只读链上下文与事件日志。
+// Package contractapi 是合约侧默认库：只读链上下文、事件日志和默认 Object。
 // 宿主通过环境变量注入上下文；Log 写入进程内缓冲，由 entry 随 JSON 响应回传。
 package contractapi
 

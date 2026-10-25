@@ -5,7 +5,7 @@ VM 使用 `github.com/lengzhao/pluginkit v0.1.6`，与 agentkit / GoChainKit 采
 ## 分层与能力
 
 - `core/`：公共数据类型、能力接口、稳定协议错误和调用上下文。
-- `internal/{compiler,security,policy,gas,abigen,storage,deployment,process,engine}/`：按职责隔离的内建实现，只依赖公共契约和必要的公共实现工具。
+- `internal/{compiler,security,policy,gas,abigen,storage,state,deployment,process,engine}/`：按职责隔离的内建实现，只依赖公共契约和必要的公共实现工具。
 - `internal/callcontext/`：调用上下文解析与传递；`internal/compat/`：旧 API 适配。
 - `internal/builtin/`：历史白盒回归测试，不进入生产插件装配路径。
 - `plugins/`：每种能力的 Config/Deps 构造与注册；第三方插件只需实现 core 接口。
@@ -25,9 +25,10 @@ VM 使用 `github.com/lengzhao/pluginkit v0.1.6`，与 agentkit / GoChainKit 采
 | `gas/meters` | 每次调用的计量器工厂 | 无 |
 | `compiler/go` | 独立进程 Go 编译 | policy, abi, injector, profiler |
 | `storage/filesystem` | 合约产物 Put/Get 存储 | 无 |
+| `state/memory` | 状态快照事务、读写集合、原子提交/回滚 | 无 |
 | `deployment/default` | 部署规则与地址分配 | store, validator |
 | `runner/process` | 子进程执行 | 无 |
-| `engine/default` | VM 编排 | policy, abi, compiler, deployer, contracts, runner, meters, estimator, validator |
+| `engine/default` | VM 编排 | policy, abi, compiler, deployer, contracts, runner, meters, estimator, validator, state |
 | `engine/components` | 兼容程序化 Runner 注入的依赖束 | 同上 |
 
 Host、CallContext、事件和单次调用的 Gas 计量器是每次调用的数据/实例；不注册成共享的全局插件。`gas/meters` 必须每次返回一个独立计量器。
@@ -156,3 +157,11 @@ func init() { pluginkit.Register("my/runner", New) }
 原有公共数据类型保持 core 类型身份；旧方法和具体实现通过根包及 `internal/compat` 适配。旧 `EstimateFromProfile` helper 会复制并把版本 0 适配为 1，新 core 估算契约严格检查版本。历史白盒测试保留在 `internal/builtin`，根包另有兼容入口测试。
 
 文件存储的 `Put` 按完整记录替换：先在临时目录写入快照，再在实例锁保护下发布；同地址覆盖会清除旧的可执行文件和可选 Gas 画像。发布失败时恢复旧记录；恢复本身失败时保留旧记录备份并返回其位置。共享目录的多个 Store 实例或多个进程之间不提供事务协调。
+
+## 状态事务
+
+`core.StateStore` 仅提供 Begin；事务提供 Get/Set/Delete、ReadSet/WriteSet、Commit/Rollback。`state/memory` 可独立构建或被宿主插件按契约引用，C2 已作为默认 Engine 图的 state 依赖。快照隔离、全局版本提交冲突、取消与副本语义见 [状态事务](state_transactions.md)。默认 Object、失败/DryRun 回滚和事件提交语义见 [Object 与执行](object_runtime.md)。
+
+## 跨合约调用
+
+`ContractCaller` 与 ObjectStore 是每帧的作用域能力，由 Engine 注入 Runner context。所有帧共享根事务作为临时 store，仅最外层成功才发布；不新增状态后端的保存点或补偿接口。`engine/default` 的 `maxCallDepth` 默认 8、可配置 1–32。Call 的消息、Gas、事件及版本见 [跨合约调用](cross_contract.md)。

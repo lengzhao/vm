@@ -142,7 +142,7 @@ Estimated = entry_gas
 
 ### 6.2 DryRun 模式
 
-调用 `ExecuteWithContext`，成功时 `Estimated = GasConsumed`，`Mode = "dry_run"`；失败（含 OOG）返回 error。
+使用独立状态事务执行并回滚，不发布事件，成功时 `Estimated = GasConsumed`，`Mode = "dry_run"`；失败（含 OOG）返回 error。
 
 ## 7. 基准测试
 
@@ -165,3 +165,11 @@ Gas 初始化/重置等管理符号仅供编译器入口使用。合约源码禁
 宿主按调用创建独立计量器，以引擎和调用上下文的较小非零上限校验，避免并发重置/累加干扰。零调用上限不能解除已配置的引擎上限。
 宿主与合约计数器均在加法前检查 uint64 溢出。失败扣费不修改计数器。
 这些措施只加固当前计量协议，未覆盖完整内存、标准库复杂度及操作系统资源成本。
+
+## 默认 Object Gas（C2）
+
+Get / Set / Delete 固定为 5 / 10 / 5，字段与消息总量受独立资源上限约束。AST 画像在导入 contractapi 时统计同名 Get/Set/Delete 方法为 Object 调用，因此可能包含无关方法；函数值间接调用仍可能漏计。画像保持 schema v1，Gas 语义版本升级为 go-gas-v3-call。静态值仍是启发式估算，硬限制由运行时与宿主校验执行。详见 [Object 与执行事务](object_runtime.md)。
+
+## 跨合约 Gas（C3）
+
+Call 固定 10 Gas 加子树实际消耗，根计量一次。静态画像只估算固定成本，不估算动态目标子树；DryRun 执行整链后丢弃临时 store，返回整链 Gas。规则及预算见 [跨合约调用](cross_contract.md)。

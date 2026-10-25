@@ -26,7 +26,7 @@ func Seal(t testing.TB, c *core.CompiledContract) *core.CompiledContract {
 		c.ABI = &abi.ABI{Version: abi.SchemaVersion}
 	}
 	if c.SourcePolicy == "" {
-		c.SourcePolicy = "go-development-v1"
+		c.SourcePolicy = "go-development-v3-call"
 	}
 	digest := artifact.Digest([]byte("test fixture"))
 	build := core.ArtifactBuild{CompilerVersion: "test-producer-v1", Toolchain: core.ArtifactToolchain{Version: runtime.Version(), BinarySHA256: digest, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}, RuntimeVersion: core.ArtifactRuntimeVersion, GasVersion: core.ArtifactGasVersion, RuntimeSHA256: artifact.RuntimeDigest(), SourceSHA256: digest, InjectedSHA256: digest, EntrySHA256: digest}

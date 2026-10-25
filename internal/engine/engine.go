@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 )
 
 type Options struct {
+	MaxCallDepth      int
 	MaxGasLimit       uint64
 	EnableGasMetering bool
 	ExecutionTimeout  time.Duration
@@ -26,6 +28,7 @@ type Deps struct {
 	Runner    core.Runner
 	Meters    core.GasMeterFactory
 	Estimator core.GasEstimator
+	State     core.StateStore
 	Validator core.ArtifactValidator
 }
 type Engine struct {
@@ -34,8 +37,14 @@ type Engine struct {
 }
 
 func New(o Options, d Deps) (*Engine, error) {
-	if d.Policy == nil || d.ABI == nil || d.Compiler == nil || d.Deployer == nil || d.Contracts == nil || d.Runner == nil || d.Estimator == nil || d.Validator == nil || (o.EnableGasMetering && d.Meters == nil) {
+	if d.State == nil || d.Policy == nil || d.ABI == nil || d.Compiler == nil || d.Deployer == nil || d.Contracts == nil || d.Runner == nil || d.Estimator == nil || d.Validator == nil || (o.EnableGasMetering && d.Meters == nil) {
 		return nil, fmt.Errorf("engine dependencies required")
+	}
+	if o.MaxCallDepth == 0 {
+		o.MaxCallDepth = core.DefaultMaxCallDepth
+	}
+	if o.MaxCallDepth < 1 || o.MaxCallDepth > core.MaxCallDepth {
+		return nil, fmt.Errorf("maxCallDepth must be between 1 and %d", core.MaxCallDepth)
 	}
 	if o.ExecutionTimeout <= 0 {
 		o.ExecutionTimeout = 30 * time.Second
@@ -81,6 +90,9 @@ func (e *Engine) Get(ctx context.Context, address string) (*core.CompiledContrac
 }
 
 func (e *Engine) Execute(ctx context.Context, req core.ExecutionRequest) (*core.ExecuteResult, error) {
+	return e.execute(ctx, req, false)
+}
+func (e *Engine) execute(ctx context.Context, req core.ExecutionRequest, dryRun bool) (out *core.ExecuteResult, executionErr error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -96,6 +108,25 @@ func (e *Engine) Execute(ctx context.Context, req core.ExecutionRequest) (*core.
 	if err := e.deps.Validator.ValidateArtifact(ctx, contract); err != nil {
 		return nil, err
 	}
+	tx, err := e.deps.State.Begin(ctx)
+	if err != nil {
+		return nil, stateError(err)
+	}
+	if tx == nil {
+		return nil, stateError(fmt.Errorf("state store returned nil transaction"))
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				executionErr = errors.Join(executionErr, stateError(rollbackErr))
+			}
+		}
+		if executionErr != nil && out != nil {
+			out.Data = nil
+			out.Events = nil
+		}
+	}()
 	cc := req.CallContext
 	if cc == nil {
 		cc = &core.CallContext{}
@@ -147,14 +178,15 @@ func (e *Engine) Execute(ctx context.Context, req core.ExecutionRequest) (*core.
 		return nil, err
 	}
 	ctx = callcontext.WithCallContext(ctx, cc)
-	result, err := e.deps.Runner.Run(ctx, contract, core.CallRequest{Function: req.Function, Args: req.Args})
+	session := &callSession{engine: e, ctx: ctx, tx: tx}
+	result, err := session.run(ctx, contract, req.Address, req.Function, req.Args, cc, []string{req.Address})
 	if result == nil {
 		if err != nil {
 			return nil, err
 		}
 		return nil, &core.ExecutionError{Code: core.CodeInvalidResponse, Message: "runner returned nil result"}
 	}
-	out := &core.ExecuteResult{Data: result.Data, Events: result.Events, GasConsumed: result.GasConsumed}
+	out = &core.ExecuteResult{Data: result.Data, Events: result.Events, GasConsumed: result.GasConsumed}
 	if meter != nil {
 		consumed := result.GasConsumed
 		if consumed == 0 {
@@ -164,6 +196,19 @@ func (e *Engine) Execute(ctx context.Context, req core.ExecutionRequest) (*core.
 			err = &core.ExecutionError{Code: core.CodeGasLimitExceeded, Message: gasErr.Error(), Cause: gasErr}
 		}
 	}
+	if err == nil && ctx.Err() != nil {
+		err = stateError(ctx.Err())
+	}
+	if err == nil && !dryRun {
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			err = stateError(commitErr)
+		} else {
+			committed = true
+		}
+	}
+	if dryRun {
+		out.Events = nil
+	}
 	return out, err
 }
 
@@ -172,7 +217,7 @@ func (e *Engine) EstimateGas(ctx context.Context, address, function string, opts
 		return nil, err
 	}
 	if opts != nil && opts.DryRun {
-		out, err := e.Execute(ctx, core.ExecutionRequest{Address: address, Function: function, Args: opts.Args, CallContext: opts.CallCtx})
+		out, err := e.execute(ctx, core.ExecutionRequest{Address: address, Function: function, Args: opts.Args, CallContext: opts.CallCtx}, true)
 		if err != nil {
 			return nil, err
 		}
@@ -200,4 +245,18 @@ func (e *Engine) EstimateGas(ctx context.Context, address, function string, opts
 		return nil, err
 	}
 	return &core.GasEstimate{Estimated: estimated, Mode: "static", ProfileUsed: true, Breakdown: breakdown}, nil
+}
+
+func stateError(err error) error {
+	code := core.CodeStateFailure
+	if errors.Is(err, core.ErrStateConflict) {
+		code = core.CodeStateConflict
+	}
+	if errors.Is(err, context.Canceled) {
+		code = core.CodeCanceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		code = core.CodeTimeout
+	}
+	return &core.ExecutionError{Code: code, Message: err.Error(), Cause: err}
 }

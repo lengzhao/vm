@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/lengzhao/vm/contractapi"
 	"github.com/lengzhao/vm/core"
 	"github.com/lengzhao/vm/internal/artifact"
 	"github.com/lengzhao/vm/internal/callcontext"
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -84,8 +87,18 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *core.CompiledContract
 	defer cancelOutput()
 	cmd := exec.CommandContext(outputCtx, contract.ExecutablePath)
 	cmd.WaitDelay = 100 * time.Millisecond
-	cmd.Stdin = bytes.NewReader(payload)
-	stdout := boundedOutput{limit: maxContractOutput, cancel: cancelOutput}
+	stdinRead, stdinWrite, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		return nil, executionError(core.CodeProcessFailure, "create stdin pipe", pipeErr)
+	}
+	defer stdinRead.Close()
+	defer stdinWrite.Close()
+	stopInput := context.AfterFunc(outputCtx, func() { _ = stdinWrite.Close() })
+	defer stopInput()
+	cmd.Stdin = stdinRead
+	input := &lockedWriter{writer: stdinWrite}
+	store, _ := core.ObjectStoreFromContext(ctx)
+	stdout := objectOutput{boundedOutput: boundedOutput{limit: maxContractOutput, cancel: cancelOutput}, ctx: runCtx, reply: input, store: store, gasFloor: contractapi.GasEntryBase}
 	stderr := boundedOutput{limit: maxContractOutput, cancel: cancelOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -93,8 +106,27 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *core.CompiledContract
 		return nil, err
 	}
 	cmd.Env = buildContractEnv(ctx)
-	runErr := cmd.Run()
+	for _, entry := range cmd.Env {
+		if strings.HasPrefix(entry, "VM_GAS_LIMIT=") {
+			stdout.gasLimit, _ = strconv.ParseUint(strings.TrimPrefix(entry, "VM_GAS_LIMIT="), 10, 64)
+		}
+	}
+	if err := interruption(runCtx); err != nil {
+		return nil, err
+	}
+	if startErr := cmd.Start(); startErr != nil {
+		return nil, executionError(core.CodeProcessFailure, "start contract process", startErr)
+	}
+	stdinRead.Close()
+	_, _ = input.Write(append(payload, '\n'))
+	runErr := cmd.Wait()
+
 	result := &core.CallResult{Stdout: stdout.String(), Stderr: stderr.String()}
+	// Retain the host-validated lower bound even when no valid final response
+	// arrives. The initial entry charge alone is not evidence of execution.
+	if stdout.gasFloor > contractapi.GasEntryBase {
+		result.GasConsumed = stdout.gasFloor
+	}
 	if stdout.exceeded || stderr.exceeded {
 		return result, executionError(core.CodeOutputLimit, "contract output limit exceeded", nil)
 	}
@@ -105,8 +137,11 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *core.CompiledContract
 		}
 		return result, executionError(code, "contract execution interrupted: "+err.Error(), err)
 	}
+	if stdout.err != nil {
+		return result, stdout.err
+	}
 	var resp processResponse
-	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	decoder := json.NewDecoder(bytes.NewReader(stdout.resultBytes()))
 	decoder.UseNumber()
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&resp); err != nil {
@@ -130,6 +165,9 @@ func (r *ProcessRunner) Run(ctx context.Context, contract *core.CompiledContract
 	}
 	if !*resp.OK && (!remoteErrorCode(resp.Code) || resp.Error == "" || resp.Result != nil) {
 		return result, executionError(core.CodeInvalidResponse, "failure response requires a supported code and diagnostic", nil)
+	}
+	if stdout.calls > 0 && *resp.Gas < stdout.gasFloor {
+		return result, executionError(core.CodeInvalidResponse, "final gas is below host calls", nil)
 	}
 	result.GasConsumed = *resp.Gas
 	result.RawResult = resp.Result
@@ -217,7 +255,7 @@ func executionError(code core.ErrorCode, message string, cause error) error {
 
 func remoteErrorCode(code core.ErrorCode) bool {
 	switch code {
-	case core.CodeInvalidRequest, core.CodeInvalidArguments, core.CodeUnknownFunction, core.CodeContractError, core.CodeContractPanic, core.CodeGasLimitExceeded, core.CodeUnsupportedVersion, core.CodeInvalidResult:
+	case core.CodeCallFailure, core.CodeInvalidRequest, core.CodeInvalidArguments, core.CodeUnknownFunction, core.CodeContractError, core.CodeContractPanic, core.CodeGasLimitExceeded, core.CodeUnsupportedVersion, core.CodeInvalidResult:
 		return true
 	}
 	return false

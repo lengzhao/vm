@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	MaxCallDepth      int    `json:"maxCallDepth"`
 	MaxGasLimit       uint64 `json:"maxGasLimit"`
 	EnableGasMetering bool   `json:"enableGasMetering"`
 	ExecutionTimeout  string `json:"executionTimeout"`
@@ -23,6 +24,7 @@ type Deps struct {
 	Runner    core.Runner            `json:"runner"`
 	Meters    core.GasMeterFactory   `json:"meters"`
 	Estimator core.GasEstimator      `json:"estimator"`
+	State     core.StateStore        `json:"state"`
 	Validator core.ArtifactValidator `json:"validator"`
 }
 
@@ -39,12 +41,12 @@ func New(c Config, d Deps) (core.Engine, error) {
 			return nil, fmt.Errorf("executionTimeout must be positive")
 		}
 	}
-	return impl.New(impl.Options{MaxGasLimit: c.MaxGasLimit, EnableGasMetering: c.EnableGasMetering, ExecutionTimeout: timeout}, impl.Deps{Policy: d.Policy, ABI: d.ABI, Compiler: d.Compiler, Deployer: d.Deployer, Contracts: d.Contracts, Runner: d.Runner, Meters: d.Meters, Estimator: d.Estimator, Validator: d.Validator})
+	return impl.New(impl.Options{MaxCallDepth: c.MaxCallDepth, MaxGasLimit: c.MaxGasLimit, EnableGasMetering: c.EnableGasMetering, ExecutionTimeout: timeout}, impl.Deps{State: d.State, Policy: d.Policy, ABI: d.ABI, Compiler: d.Compiler, Deployer: d.Deployer, Contracts: d.Contracts, Runner: d.Runner, Meters: d.Meters, Estimator: d.Estimator, Validator: d.Validator})
 }
 
 // NewWithConfig adapts the legacy configuration only at the compatibility boundary.
 func NewWithConfig(c core.VMConfig, d Deps) (core.Engine, error) {
-	return New(Config{MaxGasLimit: c.MaxGasLimit, EnableGasMetering: c.EnableGasMetering, ExecutionTimeout: normalizedTimeout(c.ExecutionTimeout).String()}, d)
+	return New(Config{MaxCallDepth: c.MaxCallDepth, MaxGasLimit: c.MaxGasLimit, EnableGasMetering: c.EnableGasMetering, ExecutionTimeout: normalizedTimeout(c.ExecutionTimeout).String()}, d)
 }
 func normalizedTimeout(d time.Duration) time.Duration {
 	if d <= 0 {
