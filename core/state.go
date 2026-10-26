@@ -6,8 +6,10 @@ import (
 )
 
 var (
-	ErrStateClosed   = errors.New("state transaction closed")
-	ErrStateConflict = errors.New("state transaction conflicts with committed state")
+	ErrStateUnavailable     = errors.New("state store unavailable")
+	ErrStateCommitUncertain = errors.New("durable state commit outcome uncertain; reopen and reconcile")
+	ErrStateClosed          = errors.New("state transaction closed")
+	ErrStateConflict        = errors.New("state transaction conflicts with committed state")
 )
 
 // StateKey isolates opaque keys by contract. Empty keys and addresses are valid
@@ -35,7 +37,10 @@ type StateStore interface {
 // Byte slices and access sets are caller-owned copies. Sets are unique and sorted
 // by contract then key, and remain inspectable after completion. ReadSet includes
 // missing keys and reads of local writes; WriteSet contains final operations.
-// Failed commits publish nothing and leave the transaction open for Rollback.
+// Failed commits publish nothing and leave the transaction open for Rollback,
+// except ErrStateCommitUncertain: durable I/O failed at the commit boundary and
+// publication may have occurred. Rollback cannot undo that outcome; reopen and
+// reconcile before retrying. The affected backend must reject further operations.
 // Successful commits close the transaction. Rollback is context-free and
 // idempotent, including after commit. Implementations support concurrent methods.
 type StateTransaction interface {

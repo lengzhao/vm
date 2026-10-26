@@ -82,3 +82,13 @@ items, err := batch.ExecuteBatch(ctx, requests)
 真实严格合约测试对照直接串行 Execute 与 workers=1/2/4 的结果和最终状态，包含过期业务失败转成功、只读结果、增量写、删除、失败/OOG、跨合约成功和父失败回滚。低层覆盖并发上限、取消、初始化失败、回滚失败、基础设施错误停止前缀、冲突重执行与二次冲突停止，另验证仅实现最小能力的自定义 PluginKit 插件及非验证状态插件拒绝。
 
 MVCC 测试覆盖独立写、同键盲写、写偏斜、缺失/删除 ABA、只读验证、副本、context 和并发方法。D3 不声称经过跨主机共识测试或对 Docker/WASI 分别测过并行吞吐。
+
+
+## 持久化后端的恢复异常
+
+E1 `state/bbolt` 可替换同一图的 state 节点，提供相同 SnapshotStore 能力。若整体错误包含 `core.ErrStateCommitUncertain`，当前项即使不在返回前缀中也可能已落盘；不能只按前缀长度重试。停止故障实例、新建实例重开并核对业务状态后才能决定续跑，详见 [持久化状态](persistent_state.md)。原“失败提交不发布”的保证对此显式异常不适用，Rollback 无法撤销潜在磁盘提交。
+
+
+## E2 可恢复批次
+
+选择 batch/recoverable + state/bbolt 可将原“调用方保证无外部状态写入”的前提落实到共享状态入口的独占会话，并以同事务回执核对不确定提交。旧 batch/ordered 的接口和前提保持不变。新能力需要稳定批次ID、保存完整请求及不可变执行规则身份；详见 [可恢复批次](recoverable_batches.md)。

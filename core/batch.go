@@ -14,6 +14,9 @@ type BatchItemResult struct {
 // committed. This is not a batch-wide atomic transaction. Deterministic equivalence
 // requires deterministic contracts, immutable inputs/artifacts and no external
 // state writers during the batch. Resource and deadline failures are not consensus.
+// ErrStateCommitUncertain means the current item outside the returned prefix may
+// already be durable. Reopen and reconcile before retrying; prefix length alone
+// cannot establish that the current item was rolled back.
 type BatchExecutor interface {
 	ExecuteBatch(context.Context, []ExecutionRequest) ([]BatchItemResult, error)
 }

@@ -11,7 +11,9 @@
 - 默认 Object 已接入内存状态事务；失败、OOG、DryRun 无提交，事件仅随成功提交返回
 - 编译与执行后端可选插件：Go / WASI 编译器，Process / Docker / wazero Runner；D2 原型比较已完成，默认配置不变
 - 可选 D3：state/mvcc 按键冲突检测、batch/ordered 有界推测执行与按输入顺序提交；确定性前提见 docs/parallel_execution.md
-- **尚未完成**：持久化状态后端、多 Object/所有权与生产链调度集成
+- 可选 E1：state/bbolt 同步持久化、重启恢复与 D3 批量组合；提交不确定结果须重开核对
+- 可选 E2：共享独占会话、状态与回执原子提交、同批次身份重放/续跑及持久未完成标记
+- **尚未完成**：多 Object/所有权、链级共识/重组与恢复流程集成、开发者指南
 
 ## 开发计划
 
@@ -78,6 +80,13 @@
 - [x] D1 编译沙箱与执行沙箱，资源限制与负例验证
 - [x] D2 对比受限原生后端与 WASM 原型，按场景推荐插件配置
 - [x] D3 基于读写集合的冲突检测及确定性并行执行（独占状态写入等前提）
+
+
+## 后续开发
+
+- [x] E1 可选持久化状态插件：重启恢复、原子落盘、故障边界与生命周期
+- [x] E2 共享独占写入与可恢复批次（单库，不含链共识/重组）
+- [ ] E3 多 Object / 所有权与授权（待设计）
 
 
 ### 第一批验收记录
@@ -218,3 +227,27 @@
 - 最终固定代码后，显式启用 Docker 的全量普通测试、全量 race（assembly 236.753 秒）、go vet、git diff --check 均通过，测试后无 vm-d1 容器残留；没有调整 D3 生产或测试超时预算。
 - 文档与配置：docs/parallel_execution.md、presets/parallel.yaml、docs/plugins.md、docs/plans/2026-10-26-d3-parallel.md；同步状态、架构和 README。确定性以无外部状态写入/产物替换、不可变输入、确定性合约及可信宿主能力为前提，时间/资源故障不属于共识保证，未测并行吞吐或声称性能提升。
 - D1–D3 变更保留当前 dev 工作区，未提交。本轮架构加固 A1–D3 已完成；持久化状态、多 Object/所有权、生产调度与开发者指南仍待后续规划。
+
+
+### 第十二批验收记录：E1 完成（2026-10-26）
+
+- 新增 state/bbolt 可选插件，固定 go.etcd.io/bbolt v1.5.0（官方模块代理和校验和），同时提供 StateStore/SnapshotStore 与 Start/Stop。默认 state/memory 和 state/mvcc 保留；D3 Engine/Runner 接口未扩大。path 必填且父目录需存在，lockTimeout 默认 1s，构造无数据库 I/O，assembly 管理资源，数据库文件独占锁拒绝第二实例。
+- 复用不可变 MVCC 内存快照，避免长期数据库读事务阻塞写入扩容。提交先校验并准备内存代际，再同步原子落盘，成功后发布内存且不再执行可失败的检查；提交成功后的取消不会误报失败。schema v1、二进制长度前缀复合键保留空值/缺失/删除，坏文件、未知 schema 或键编码拒绝启动，不静默清空或降级。
+- 明确持久化提交 I/O 的不确定异常 ErrStateCommitUncertain（可 errors.Is），保留 cause，隔离实例并取消活动事务。Rollback 不能撤销可能已落盘的结果；停止并用新实例重开、核对业务状态后才能重试。批量返回前缀不包含当前不确定项但不能据此断言它已回滚；核心注释和批量/状态文档同步此异常。新增 ErrStateUnavailable 表示未启动、关闭或故障状态。
+- 新增 13 个测试函数，覆盖构造无 I/O、Start/Stop/旧事务失效、重开数据、空值/删除/二进制键、独立写/同键/ABA、取消、文件锁、坏文件/schema与锁释放、提交前错误无发布、提交前后故障结果及隔离、持久化边界后的取消、子进程不调用Stop直接退出恢复，以及真实合约跨合约失败/OOG/DryRun/D3批量重开与配置生命周期。
+- 最终代码固定后，显式启用 Docker 的全量普通测试、全量 race、go vet、git diff --check 通过，无 vm-d1 测试容器残留。首轮 race 的既有 TestProcessRunnerNonZeroExitWithErrorJSON 在原 1 秒预算触发超时；未改代码或预算，单独连续 10 次 race 均通过（约 0.15–0.21s），随后全量 race 重跑通过。独立代码审查及增量复核无明确剩余 P1/P2。
+- 文档及配置：docs/persistent_state.md、presets/persistent.yaml、docs/plans/2026-10-26-e1-persistent-state.md；同步插件、状态、并行、架构和 README。耐久性依赖 OS/文件系统/设备兑现同步语义；测试不是断电硬件认证。首版加载全量状态入内存，写提交复制代际，不提供备份工具、迁移、跨进程共享写、请求幂等账本或区块整体原子性。
+- E1 变更保留当前 dev 工作区，未提交/推送。下一项建议 E2：生产批次独占写入与恢复/提交结果核对协议，需先确定集成边界。
+
+
+### 第十三批验收记录：E2 完成（2026-10-26）
+
+- 按用户批准设计新增 RecoverableBatchStore/BatchSession 与 RecoverableBatchExecutor 窄能力，注册 batch/recoverable 与 engine/recoverable。core.Engine、旧 BatchExecutor、默认插件配置保持不变；state/bbolt 为状态与回执提供同一数据库事务边界，批量调度复用有序推测窗口与冲突重执行。
+- 共享状态门限等待旧事务结束，活动会话阻止普通 Begin 及其它会话，可取消等待；等待会话时不允许普通事务插队。会话快照不能直接 Commit，只能 Finalize。Close/Stop/fault 失效快照并唤醒等待者。持久未完成批次标记跨中断/重启阻止其它写入；无活动会话时普通 Begin 明确报告带批次 ID 的 ErrBatchPending，而非永久等待，只有同身份恢复可完成并解除标记。
+- 每项状态、连续回执、字节计数及最后一项的标记删除在同一 bbolt 事务中提交；读项与业务失败也落回执，失败写入丢弃但验证读写版本。提交结果不确定时不自动重执行，隔离后重开查询同身份前缀，已落盘项跳过、未落盘项继续；不是整批原子性，也不提供外部事件恰好一次投递。
+- 输入指纹绑定版本、显式 executionID、调用地址/函数/标量参数、无 Host 的链上下文与确定性部署清单。冻结参数和指针值；同 ID 内容/执行身份不符返回 ErrBatchIdentityConflict。executionID 是可信部署方声明，必须随执行规则变化更新，不自动证明任意自定义配置等价。调用方须保存完整请求和产物可用性，无法凭 ID 还原未保存请求。
+- 首次结果及重放统一 JSON 回执表示、UseNumber 保留 uint64 等事件数值，保留 Data 原字节与 Gas；业务错误只返回稳定 Code/Message，不持久化 Go cause。单项4MiB、诊断1MiB，累计默认64MiB，state/bbolt 可设 maxBatchReceiptMB 4–1024，允许重开提高额度续跑而不改变请求身份；历史回执首版不清理。
+- 新增14个E2测试函数，覆盖正常/批次入口互斥、旧事务等待、持久 fence、同ID冲突、连续/纯读/失败回执、MVCC冲突、提交前/后故障、无Stop子进程退出恢复、额度恢复、事件整数、输入副本与规则ID、最小会话能力插件、真实合约故障前缀/跨合约/失败/OOG及重开续跑和重放。审查发现无活动会话的pending等待问题，先失败回归后修复；首次/重放数值表示差异也先失败再修复，最终独立复核无明确剩余P1/P2。
+- 最终固定代码后，显式启用Docker的全量普通测试、全量race、go vet、git diff --check均通过，无vm-d1容器残留。本轮没有修改生产或测试超时预算。
+- 配置与文档：presets/recoverable.yaml、docs/recoverable_batches.md、docs/plans/2026-10-26-e2-recoverable-batches.md，并同步插件、持久化、并行和README。元数据为schema v1的隔离扩展；旧E1程序不理解未完成标记，不支持降级写入。单文件/单实例，原始文件与可信插件仍在信任边界内，无授权、分布式锁、链重组或批次自动遗弃能力。
+- E1/E2变更保留当前dev工作区，未提交/推送。下一项E3：多Object与所有权/授权，需要先确认对象模型与权限边界。

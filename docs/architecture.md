@@ -46,7 +46,7 @@ flowchart TD
 ### 2.3 当前阶段后置能力
 以下能力保留设计方向，但不作为当前主链路阻塞项：
 - Wasmtime/TinyGo 等额外后端扩展（D1 Docker 与 D2 WASI/wazero 已可选接入，见 [后端比较](backend_comparison.md)）
-- 持久化链状态与多 Object/所有权（默认 Object 与跨合约 Call 已接入事务及 Gas）
+- 多 Object/所有权与完整链恢复协议（默认 Object/跨合约已接入事务，E1 可选持久化插件见 [持久化状态](persistent_state.md)）
 - 合约升级、面向持久化链状态的生产调度集成（D3 可选 MVCC / 有序并行插件已实现，见 [有序并行执行](parallel_execution.md)）
 - TinyGo 作为默认构建器（当前默认 `go build`，可后续切换）
 

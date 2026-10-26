@@ -24,6 +24,17 @@ type Ordered struct {
 var _ core.BatchExecutor = (*Ordered)(nil)
 
 func New(o Options, d Deps) (*Ordered, error) {
+	var err error
+	o, err = normalizeOptions(o)
+	if err != nil {
+		return nil, err
+	}
+	if d.State == nil || d.Executor == nil {
+		return nil, fmt.Errorf("batch state and transaction executor required")
+	}
+	return &Ordered{options: o, deps: d, gate: make(chan struct{}, 1)}, nil
+}
+func normalizeOptions(o Options) (Options, error) {
 	if o.Workers == 0 {
 		o.Workers = 4
 	}
@@ -31,12 +42,9 @@ func New(o Options, d Deps) (*Ordered, error) {
 		o.MaxBatch = 1024
 	}
 	if o.Workers < 1 || o.Workers > 64 || o.MaxBatch < 1 || o.MaxBatch > 65536 {
-		return nil, fmt.Errorf("workers must be 1–64 and maxBatch 1–65536")
+		return o, fmt.Errorf("workers must be 1–64 and maxBatch 1–65536")
 	}
-	if d.State == nil || d.Executor == nil {
-		return nil, fmt.Errorf("batch state and transaction executor required")
-	}
-	return &Ordered{options: o, deps: d, gate: make(chan struct{}, 1)}, nil
+	return o, nil
 }
 func (b *Ordered) ExecuteBatch(ctx context.Context, requests []core.ExecutionRequest) ([]core.BatchItemResult, error) {
 	if err := ctx.Err(); err != nil {
@@ -73,7 +81,10 @@ type attempt struct {
 }
 
 func (b *Ordered) begin(ctx context.Context) (*attempt, error) {
-	tx, err := b.deps.State.BeginSnapshot(ctx)
+	return b.beginWith(ctx, b.deps.State)
+}
+func (b *Ordered) beginWith(ctx context.Context, state core.SnapshotStore) (*attempt, error) {
+	tx, err := state.BeginSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +116,10 @@ func (a *attempt) discard() error {
 	a.tx = nil
 	return err
 }
-func (b *Ordered) window(ctx context.Context, requests []core.ExecutionRequest) (out []core.BatchItemResult, returnErr error) {
+func (b *Ordered) window(ctx context.Context, requests []core.ExecutionRequest) ([]core.BatchItemResult, error) {
+	return b.windowWith(ctx, requests, b.deps.State, func(ctx context.Context, _ int, a *attempt) error { return a.resolve(ctx) })
+}
+func (b *Ordered) windowWith(ctx context.Context, requests []core.ExecutionRequest, state core.SnapshotStore, resolve func(context.Context, int, *attempt) error) (out []core.BatchItemResult, returnErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	attempts := make([]*attempt, len(requests))
@@ -116,7 +130,7 @@ func (b *Ordered) window(ctx context.Context, requests []core.ExecutionRequest) 
 	}()
 	// Begin the entire bounded window before executing or committing any member.
 	for i := range requests {
-		a, err := b.begin(ctx)
+		a, err := b.beginWith(ctx, state)
 		if err != nil {
 			return out, err
 		}
@@ -132,12 +146,12 @@ func (b *Ordered) window(ctx context.Context, requests []core.ExecutionRequest) 
 		if a.err != nil && !transactionFailure(a.err) {
 			return out, a.err
 		}
-		err := a.resolve(ctx)
+		err := resolve(ctx, i, a)
 		if errors.Is(err, core.ErrStateConflict) {
 			if cleanupErr := a.discard(); cleanupErr != nil {
 				return out, errors.Join(err, cleanupErr)
 			}
-			a, err = b.begin(ctx)
+			a, err = b.beginWith(ctx, state)
 			if err != nil {
 				return out, err
 			}
@@ -146,7 +160,7 @@ func (b *Ordered) window(ctx context.Context, requests []core.ExecutionRequest) 
 			if a.err != nil && !transactionFailure(a.err) {
 				return out, a.err
 			}
-			err = a.resolve(ctx)
+			err = resolve(ctx, i, a)
 		}
 		// A second conflict signals an external writer or incompatible state plugin.
 		// Do not spin, publish stale output, or advance past an unresolved item.

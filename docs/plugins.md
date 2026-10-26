@@ -198,3 +198,17 @@ WASI 默认不授予文件挂载、socket、宿主时钟/随机源或宿主环�
 - `engine/batched` 将独立 Engine 与 BatchExecutor 组合供 assembly 根节点使用，不接管它们的生命周期；明确配置同一 Engine / State 实例，避免业务状态分叉。原默认图不变。
 
 完整配置见 `presets/parallel.yaml`，算法、业务/基础设施错误分类、已提交前缀与确定性前提见 [有序并行执行](parallel_execution.md)。必须无外部并发写入或产物替换，不将资源故障称为确定性交易结果；不提供整批原子回滚。
+
+
+## E1：持久化状态插件
+
+`state/bbolt` 提供 StateStore、SnapshotStore 和 Start(ctx)/Stop(ctx)，配置 path（必填，父目录需存在）、lockTimeout（默认 1s，显式须为正 duration）。工厂不获取资源；assembly 启动后独占文件，Stop 取消旧快照并关闭；原实例关闭后不重启。默认 state/memory、state/mvcc 不变。完整示例 `presets/persistent.yaml` 可直接组合 D3 批量能力，无 Engine/Runner 接口变更。
+
+持久化 I/O 存在 ErrStateCommitUncertain 显式异常：结果可能已经落盘，后端故障隔离，必须新实例重开核对后再重试。批量返回的前缀不包含不确定项但不能据此断言它已回滚；详见 [持久化状态](persistent_state.md)。
+
+
+## E2：可恢复批次
+
+`batch/recoverable` 仅依赖 RecoverableBatchStore、TransactionExecutor、ContractReader；配置 workers、maxBatch、executionID（执行规则身份，必填）。`engine/recoverable` 组合 Engine 与 RecoverableBatchExecutor，不扩大 core.Engine 或旧 BatchExecutor。state/bbolt 实现持久化独占会话和原子回执；普通入口同样受会话及未完成批次标记约束。内存后端不支持该能力，装配时拒绝替代。
+
+`state/bbolt` 新增 maxBatchReceiptMB（默认64，范围4–1024）限制每批累计回执，可在重开时调高以恢复额度不足的批次。配置见 `presets/recoverable.yaml`；身份、故障、未完成标记与事件去重见 [可恢复批次](recoverable_batches.md)。

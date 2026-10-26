@@ -70,7 +70,22 @@ func (t *mvccTransaction) Validate(ctx context.Context) error {
 	defer t.owner.mu.Unlock()
 	return t.validate(ctx)
 }
-func (t *mvccTransaction) Commit(ctx context.Context) error {
+func (t *mvccTransaction) Commit(ctx context.Context) error { return t.commit(ctx, nil) }
+
+// commit prepares everything before the optional durable publication boundary.
+// After persist succeeds, publication must not fail, even if cancellation races.
+func (t *mvccTransaction) commit(ctx context.Context, persist func(map[core.StateKey]core.StateWrite) error) error {
+	return t.finalize(ctx, true, func(w map[core.StateKey]core.StateWrite) error {
+		if persist != nil && len(w) > 0 {
+			return persist(w)
+		}
+		return nil
+	})
+}
+
+// finalize may discard guest writes while atomically recording a failure receipt.
+// All allocations/checks precede durable publication, including read-only receipts.
+func (t *mvccTransaction) finalize(ctx context.Context, apply bool, persist func(map[core.StateKey]core.StateWrite) error) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.owner.mu.Lock()
@@ -78,9 +93,14 @@ func (t *mvccTransaction) Commit(ctx context.Context) error {
 	if err := t.validate(ctx); err != nil {
 		return err
 	}
-	if len(t.writes) > 0 {
-		values := make(map[core.StateKey][]byte, len(t.owner.values)+len(t.writes))
-		versions := make(map[core.StateKey]*revision, len(t.owner.versions)+len(t.writes))
+	writes := t.writes
+	if !apply {
+		writes = nil
+	}
+	values, versions := t.owner.values, t.owner.versions
+	if len(writes) > 0 {
+		values = make(map[core.StateKey][]byte, len(t.owner.values)+len(writes))
+		versions = make(map[core.StateKey]*revision, len(t.owner.versions)+len(writes))
 		for k, v := range t.owner.values {
 			if err := t.check(ctx); err != nil {
 				return err
@@ -93,7 +113,7 @@ func (t *mvccTransaction) Commit(ctx context.Context) error {
 			}
 			versions[k] = v
 		}
-		for k, w := range t.writes {
+		for k, w := range writes {
 			if err := t.check(ctx); err != nil {
 				return err
 			}
@@ -104,11 +124,16 @@ func (t *mvccTransaction) Commit(ctx context.Context) error {
 			}
 			versions[k] = &revision{}
 		}
-		if err := t.check(ctx); err != nil {
+	}
+	if err := t.check(ctx); err != nil {
+		return err
+	}
+	if persist != nil {
+		if err := persist(writes); err != nil {
 			return err
 		}
-		t.owner.values, t.owner.versions = values, versions
 	}
+	t.owner.values, t.owner.versions = values, versions
 	t.closed = true
 	t.snapshot = nil
 	t.versions = nil

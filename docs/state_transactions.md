@@ -57,3 +57,8 @@ Begin 的 context 约束整个事务；每次读写/提交还检查该操作的 
 ## 可选 D3 MVCC 后端
 
 `state/memory` 保留全局版本的保守提交行为。选择 `state/mvcc` 后按读取/写入键的版本令牌检测冲突，独立键写入可共同提交，包含缺失键及删除的 ABA 防护，纯读 Commit 也验证。MVCC 额外提供 SnapshotStore / SnapshotTransaction.Validate 供批量调度，未扩大原 StateStore 契约。内存实现复制代际并保留 tombstone，不持久化、不回收历史键版本。完整边界见 [有序并行执行](parallel_execution.md)。
+
+
+## 可选 E1 持久化后端
+
+`state/bbolt` 提供相同 StateStore/SnapshotStore 能力及独立 Start/Stop 生命周期。未启动或已关闭/故障返回 ErrStateUnavailable。提交边界 I/O 错误有明确的 ErrStateCommitUncertain 异常：磁盘结果可能已提交，Rollback 不承诺撤销；停止实例，重开核对后再重试。除该异常外保留失败提交零发布。完整配置、恢复和耐久性边界见 [持久化状态](persistent_state.md)，不替换默认内存插件。

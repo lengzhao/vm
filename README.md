@@ -217,3 +217,9 @@ go run ./examples/plugins presets/default.yaml
 
 
 可选批量执行：`state/mvcc` + `batch/ordered` 支持有界推测执行、按输入顺序提交与冲突重执行；现有默认配置不变。配置见 [`presets/parallel.yaml`](presets/parallel.yaml)，确定性前提、错误及已提交前缀语义见 [有序并行执行](docs/parallel_execution.md)。
+
+
+可选持久化状态：`state/bbolt` 支持重启恢复、同步原子提交及 D3 批量执行；默认内存后端不变。配置见 [`presets/persistent.yaml`](presets/persistent.yaml)，生命周期及提交不确定结果的处理见 [持久化状态](docs/persistent_state.md)。
+
+
+可选可恢复批次：`batch/recoverable` + `state/bbolt` 提供共享独占会话、状态与回执原子提交、同 ID 续跑和重放；默认及旧批量接口不变。配置见 [`presets/recoverable.yaml`](presets/recoverable.yaml)，身份、未完成批次与事件去重要求见 [可恢复批次](docs/recoverable_batches.md)。
