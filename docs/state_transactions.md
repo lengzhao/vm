@@ -35,7 +35,7 @@ store, _, err := build.Build[core.StateStore](ctx, cfg, "state")
 
 上例还需导入 `github.com/lengzhao/pluginkit/build`，并导入 `plugins/state` 或空白导入 `plugins/all` 以注册插件。使用方依赖 `core.StateStore`，不要求生命周期、配置查询或其他 VM 能力。同一图中的同实例引用共享状态，不同构建得到独立 store。C2 已将状态作为依赖加入默认 Engine 图；`assembly.Build` 的根节点仍要求 Engine，独立状态构建使用 PluginKit。
 
-## 事务语义
+## state/memory 事务语义
 
 - `Begin(ctx)` 引用当时的不可变一致快照，不复制全库。后续提交发布新的 map，不改变已打开事务的读取视图；事务可读到自己的写入和删除。
 - `Get` 返回值、存在标志和错误。不存在与已存储的空值可区分；`nil` 与空切片均表示存在的零长度值。
@@ -51,4 +51,9 @@ store, _, err := build.Build[core.StateStore](ctx, cfg, "state")
 
 Begin 的 context 约束整个事务；每次读写/提交还检查该操作的 context。预取消、等待锁期间取消或在准备提交期间观察到取消，均不发布数据；与最终发布并发的取消按提交时的线性化顺序处理。单次操作 context 取消不终止仍有效的 Begin context。错误保留 `context.Canceled` / `context.DeadlineExceeded`，可用 `errors.Is` 判断。Rollback 不使用 context，确保宿主请求取消后仍可清理。
 
-内存实现的 Begin 共享不可变快照，写事务 Commit 复制全量键映射并复用未修改的值；输入输出字节仍独立复制。不持久化、不提供跨进程协调。C2 已将 Engine / ProcessRunner / contractapi 的默认 Object 接入事务，失败、OOG、DryRun 不提交，事件仅随成功提交返回，见 [Object 与执行](object_runtime.md)；跨合约共享临时 store 已由 C3 接入，见 [跨合约调用](cross_contract.md)，细粒度读写集合冲突检测和确定性并行执行在 D3。
+内存实现的 Begin 共享不可变快照，写事务 Commit 复制全量键映射并复用未修改的值；输入输出字节仍独立复制。不持久化、不提供跨进程协调。C2 已将 Engine / ProcessRunner / contractapi 的默认 Object 接入事务，失败、OOG、DryRun 不提交，事件仅随成功提交返回，见 [Object 与执行](object_runtime.md)；跨合约共享临时 store 已由 C3 接入，见 [跨合约调用](cross_contract.md)，D3 已提供可选的细粒度冲突检测与有序并行插件，见下节。
+
+
+## 可选 D3 MVCC 后端
+
+`state/memory` 保留全局版本的保守提交行为。选择 `state/mvcc` 后按读取/写入键的版本令牌检测冲突，独立键写入可共同提交，包含缺失键及删除的 ABA 防护，纯读 Commit 也验证。MVCC 额外提供 SnapshotStore / SnapshotTransaction.Validate 供批量调度，未扩大原 StateStore 契约。内存实现复制代际并保留 tombstone，不持久化、不回收历史键版本。完整边界见 [有序并行执行](parallel_execution.md)。

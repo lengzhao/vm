@@ -8,12 +8,13 @@ const CodeArtifactIntegrity ErrorCode = "ARTIFACT_INTEGRITY"
 
 // ArtifactToolchain records the actual compiler and effective build target.
 type ArtifactToolchain struct {
-	Version      string   `json:"version"`
-	BinarySHA256 string   `json:"binary_sha256"`
-	GOOS         string   `json:"goos"`
-	GOARCH       string   `json:"goarch"`
-	CGOEnabled   bool     `json:"cgo_enabled"`
-	Flags        []string `json:"flags"`
+	ContainerImage string   `json:"container_image,omitempty"`
+	Version        string   `json:"version"`
+	BinarySHA256   string   `json:"binary_sha256"`
+	GOOS           string   `json:"goos"`
+	GOARCH         string   `json:"goarch"`
+	CGOEnabled     bool     `json:"cgo_enabled"`
+	Flags          []string `json:"flags"`
 }
 
 // ArtifactBuild identifies the inputs that produced an executable. Digests are

@@ -3,6 +3,7 @@ package all
 
 import (
 	_ "github.com/lengzhao/vm/plugins/abi"
+	_ "github.com/lengzhao/vm/plugins/batch"
 	_ "github.com/lengzhao/vm/plugins/compiler"
 	_ "github.com/lengzhao/vm/plugins/deployment"
 	_ "github.com/lengzhao/vm/plugins/engine"

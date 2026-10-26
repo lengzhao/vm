@@ -9,7 +9,9 @@
 - Host Runtime MVP 已接入：`contractapi` + `ExecuteWithContext` + 事件回传
 - 加固：禁止宿主根包 import、编译缓存 + embed contractapi、最小 env、CallContext 零值语义、结果自包含
 - 默认 Object 已接入内存状态事务；失败、OOG、DryRun 无提交，事件仅随成功提交返回
-- **尚未完成**：持久化状态后端、多 Object/所有权、完整沙箱
+- 编译与执行后端可选插件：Go / WASI 编译器，Process / Docker / wazero Runner；D2 原型比较已完成，默认配置不变
+- 可选 D3：state/mvcc 按键冲突检测、batch/ordered 有界推测执行与按输入顺序提交；确定性前提见 docs/parallel_execution.md
+- **尚未完成**：持久化状态后端、多 Object/所有权与生产链调度集成
 
 ## 开发计划
 
@@ -40,13 +42,13 @@
 - [x] 基准测试（Add / Loop / EstimateGasStatic）
 
 ### 第七阶段：沙箱增强
-- [ ] 可插拔 Runner（Process / Docker / 未来 WASM）
-- [ ] 负例安全测试（文件系统、网络）
-- [ ] Linux seccomp / namespace 或 Docker 隔离评估
+- [x] 可插拔 Runner（Process / Docker / wazero；Wasmtime 可后续独立扩展）
+- [x] 负例安全测试（文件系统、网络及资源耗尽）
+- [x] Docker 编译/执行隔离与资源限制（独立 Linux 过滤器后置）
 
 ### 第八阶段：平台能力（后置）
 - [ ] 合约升级
-- [ ] Object 并行执行
+- [x] 默认 Object 事务的可选有序并行执行（多 Object/所有权仍后置）
 - [ ] CLI / 部署工具
 - [ ] TinyGo 可选构建器
 
@@ -73,9 +75,9 @@
 - [x] C1 状态事务接口与快照/提交/回滚
 - [x] C2 Object 存储，失败及 DryRun 无提交
 - [x] C3 跨合约共享事务/Gas、重入与深度限制
-- [ ] D1 编译沙箱与执行沙箱，资源限制与负例验证
-- [ ] D2 对比受限原生后端与 WASM 原型后确定生产后端
-- [ ] D3 基于读写集合的冲突检测及确定性并行执行
+- [x] D1 编译沙箱与执行沙箱，资源限制与负例验证
+- [x] D2 对比受限原生后端与 WASM 原型，按场景推荐插件配置
+- [x] D3 基于读写集合的冲突检测及确定性并行执行（独占状态写入等前提）
 
 
 ### 第一批验收记录
@@ -179,3 +181,40 @@
 - 新增 17 个测试函数，覆盖临时写入可见、父子统一发布/丢弃、忽略失败、DryRun、事件顺序、大整数转发、上下文与 Sender、8/9 层边界、直接/间接重入、顺序重调、严格确定性回放、Gas 精确一次/预算/少报/溢出、资源上限、子调用取消、畸形消息与本地编码错误。
 - 全量普通测试、全量 race、go vet、git diff --check 通过；两位独立审查及增量复核无 P1/P2。文档：docs/cross_contract.md，并同步协议、Host、Object、状态事务、Gas、策略、产物清单、插件指南及 README。
 - C1–C3 变更保留 dev 工作区，未提交。当前下一项 D1：编译沙箱与执行沙箱、资源限制及负例验证。
+
+
+### 第九批验收记录：D1 完成（2026-10-25）
+
+- 按用户确认的 Docker 方案，新增 compiler/go 可选 sandbox 配置和 runner/docker。保留默认本机开发路径；配置失败、镜像缺失或容器运行失败不降级宿主。构造不访问 daemon，不拉取镜像；只接受本地不可变 sha256 镜像 ID。
+- 两种沙箱均非 root、禁网、只读根目录、移除 capabilities、no-new-privileges，使用私有命名空间与默认 seccomp；CPU、内存（禁额外 swap）、PID、文件描述符、tmpfs 和运行时间均有限制，关闭 Docker 日志落盘。编译仅开放单次只读源目录及可写产物目录，工具链子进程在容器内；执行只挂载私有、重新校验过的二进制快照。
+- Docker 编译目标为 Linux/宿主架构，清单与缓存纳入镜像 ID 及实际工具链摘要；policy/artifact 显式配置 targetOS/targetArch，ProcessRunner 与 Docker Runner 分别独立检查目标。核心能力接口未扩大，runtime/协议/Gas 语义未改变。
+- 容器先 create 再 attach/start，运行后所有路径强制删除整个容器。清理失败进入 Runner 错误并让 Engine 回滚状态和事件；create 期间取消仍保留 CANCELED 分类。create CLI 超时明确报告结果不确定及具体随机容器名，绝不启动；daemon 故障/宿主崩溃后的恢复仍需集成方治理，不能承诺后台自动回收。
+- 新增 20 个测试函数，覆盖配置/镜像拒绝、隔离参数、预取消、创建失败/超时、取消/清理、真实编译/缓存/编译失败、只读构建挂载、宿主文件和网络访问拒绝、OOM、实际 PID 耗尽、tmpfs 配额、后代清理，以及 Object/跨合约/失败/DryRun/OOG/清理失败事务回滚。
+- 使用本机 Docker 28.5.2、Linux arm64 Go 1.26.9 镜像实际验证；VM 测试工具链为 Go 1.26.1。显式启用 Docker 的全量普通测试、全量 race、go vet、git diff --check 均通过，测试后无 vm-d1 容器残留。独立审查及最终增量复核无剩余明确 P1/P2。
+- 文档与配置：docs/sandbox_roadmap.md、docs/plugins.md、presets/docker.yaml；同步 README、产物清单和架构/执行环境文档。Docker、镜像和宿主内核仍在信任边界内，D2 生产后端比较尚未完成。
+- 变更保留当前 dev 工作区，未提交。下一项 D2：对比受限原生后端与 WASM 原型后确定生产后端。
+
+
+### 第十批验收记录：D2 完成（2026-10-26）
+
+- 按用户确认的插件化选择，新增 compiler/wasip1 与 runner/wazero，支持 compiler / interpreter 引擎。编译器可组合 Docker 编译沙箱；产物目标显式为 wasip1/wasm，工具链、缓存及清单覆盖目标，不改变核心能力接口或默认插件。
+- 将有界协议会话、Object 与跨合约消息处理提取到 internal/execution，由进程与 WASI 共用；WASI 同步回复使用有界协议约束下的输入队列，避免 fd_write 回调等待下一次 fd_read 的管道死锁。协议、Gas、状态事务语义保持一致。
+- 固定 wazero v1.12.0；每帧独立 runtime，默认无宿主文件/网络/环境/真实时钟/随机源授权，限制线性内存、模块字节及 context 执行时间。支持中止无源码插桩的 Wasm 死循环；不承诺 JIT/验证硬实时抢占或 OS 总 RSS 配额。
+- 新增 16 个测试函数，保留并迁移低层协议测试，覆盖实际编译、目标缓存分离、整数宽度及边界、原生结果/事件/Gas 一致、并发、Object、跨合约事务、失败/OOG/DryRun、取消分类、权限和内存/输出负例。
+- 基准实际运行三轮、每轮三次完整 Engine 调用，原始数据及方法见 docs/backend_comparison.md、docs/benchmarks/2026-10-26-backends.txt。当前每帧重新 JIT 原型的 Add / 跨合约耗时约为 Docker 的 2.14 / 1.82 倍；推荐需要 OS 配额的不可信原生执行选 Docker，WASI 保留纯 Go 嵌入原型选项。未测总 RSS，不将宿主 Go 分配与跨进程总内存混比。
+- race 下曾在 Child 触发父 20 秒预算取消；拆分最小合约后仍在全量与单独运行复现。记录显示单帧 Add / Width 约 14.40 / 12.89 秒、Child 19.67 秒。仅语义集成测试预算改为 Runner 60 秒 / Engine 90 秒，生产默认及专用 100ms 死循环取消测试未改，不宣称默认预算适用于所有嵌套负载。资源负例加强为真正超过 1 MiB 的 OUTPUT_LIMIT 与含 memory 诊断的内存错误，避免协议错误或超时充数。
+- 最终固定代码后，显式启用 Docker 的全量普通测试、全量 race（assembly 222.039 秒）、go vet、git diff --check 通过，测试后无 vm-d1 容器残留。独立审查及测试预算增量复核无剩余明确 P1/P2。
+- 配置与文档：presets/wasi.yaml、docs/plugins.md、docs/backend_comparison.md、docs/plans/2026-10-26-d2-wasi.md；同步 README 与架构/执行环境文档。变更保留 dev 工作区，未提交。下一项 D3：基于读写集合的冲突检测及确定性并行执行。
+
+
+### 第十一批验收记录：D3 完成（2026-10-26）
+
+- 按用户确认的插件方案，新增 state/mvcc 与 batch/ordered；原 state/memory、core.Engine 及默认配置保持原样。MVCC 同时提供独立 SnapshotStore/可验证事务能力，Engine 额外提供 TransactionExecutor，在调用方事务中执行完整调用树、不提交或回滚。engine/batched 仅组合两个门面能力，插件依赖由 PluginKit 明确连接。
+- MVCC 按实际读/写键的版本身份令牌校验，独立写可以共同提交；缺失键、删除及 ABA、同键盲写、写偏斜、纯读均验证。提交原子，失败不发布；对外字节及排序集合为副本，取消/关闭/幂等回滚语义保留。内存实现复制代际，tombstone 不回收，不持久化。
+- 调度器按有界窗口并行推测、按输入顺序提交，冲突项在最新状态顺序重执行一次；业务失败及纯读结果也验证，推测 Gas/事件不进入最终结果。再次冲突停止，不无限重试。单实例用可取消门限串行批次，构造不创建活动资源，窗口返回前等待所有 worker。
+- 明确区分业务失败与基础设施错误，检查组合错误全部分支；取消、状态/产物、进程/容器清理及未知错误停止批次并清理未提交窗口，返回已处理前缀。成功前缀保持提交，业务失败项回滚，不承诺整批原子性。
+- 新增 20 个测试函数。真实严格合约直接串行 Execute 与 workers=1/2/4 比较 Data、Events、Gas、错误码和最终状态，覆盖过期业务失败转成功、只读、删除、失败/OOG、跨合约成功/父失败及非法请求后续处理；另覆盖独立/冲突/缺失 ABA、并发副本/context、事务归属、有界并发、取消、初始化及回滚失败、基础设施停止前缀、二次冲突停止、最小自定义插件及不支持验证的后端拒绝。
+- 独立审查发现并修复三项边界，均补失败回归后修复：基础设施错误误作业务失败继续；事务执行加载错误包装与单次路径不同；空地址/空函数未分类。现两路径共享加载校验，空请求返回 INVALID_REQUEST，增量复核无剩余明确 P1/P2。
+- 最终固定代码后，显式启用 Docker 的全量普通测试、全量 race（assembly 236.753 秒）、go vet、git diff --check 均通过，测试后无 vm-d1 容器残留；没有调整 D3 生产或测试超时预算。
+- 文档与配置：docs/parallel_execution.md、presets/parallel.yaml、docs/plugins.md、docs/plans/2026-10-26-d3-parallel.md；同步状态、架构和 README。确定性以无外部状态写入/产物替换、不可变输入、确定性合约及可信宿主能力为前提，时间/资源故障不属于共识保证，未测并行吞吐或声称性能提升。
+- D1–D3 变更保留当前 dev 工作区，未提交。本轮架构加固 A1–D3 已完成；持久化状态、多 Object/所有权、生产调度与开发者指南仍待后续规划。

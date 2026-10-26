@@ -10,6 +10,7 @@ import (
 	"github.com/lengzhao/vm/abi"
 	"github.com/lengzhao/vm/core"
 	"github.com/lengzhao/vm/internal/artifact"
+	"github.com/lengzhao/vm/internal/sandbox"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -25,6 +26,8 @@ import (
 
 // Compiler 编译器模块实现
 type Compiler struct {
+	wasi         bool
+	sandbox      *sandbox.Docker
 	goBinary     string
 	goVersion    string
 	abiGenerator core.ABIGenerator
@@ -36,6 +39,8 @@ type Compiler struct {
 }
 
 type Options struct {
+	WASI               bool
+	Sandbox            *sandbox.Docker
 	GoBinary           string
 	GoVersion          string
 	OutputDir          string
@@ -72,7 +77,7 @@ func New(c Options, d Deps) (*Compiler, error) {
 	if c.GoVersion == "" {
 		c.GoVersion = runtime.Version()
 	}
-	return &Compiler{goBinary: c.GoBinary, goVersion: c.GoVersion, outputDir: c.OutputDir, buildTimeout: c.BuildTimeout, policy: d.Policy, abiGenerator: d.ABI, injector: d.Injector, profiler: d.Profiler}, nil
+	return &Compiler{wasi: c.WASI, sandbox: c.Sandbox, goBinary: c.GoBinary, goVersion: c.GoVersion, outputDir: c.OutputDir, buildTimeout: c.BuildTimeout, policy: d.Policy, abiGenerator: d.ABI, injector: d.Injector, profiler: d.Profiler}, nil
 }
 
 // Compile 编译源代码
@@ -140,7 +145,7 @@ func (c *Compiler) Compile(ctx context.Context, sourceCode string) (*core.Compil
 	}
 	build := core.ArtifactBuild{
 		CompilerVersion: compilerBuildID,
-		Toolchain:       core.ArtifactToolchain{Version: c.goVersion, BinarySHA256: tc.binarySHA256, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Flags: []string{"-mod=mod", "-trimpath", "-buildvcs=false", "-ldflags=-buildid="}},
+		Toolchain:       core.ArtifactToolchain{Version: c.goVersion, BinarySHA256: tc.binarySHA256, GOOS: tc.goos, GOARCH: tc.goarch, ContainerImage: tc.image, Flags: []string{"-mod=mod", "-trimpath", "-buildvcs=false", "-ldflags=-buildid="}},
 		RuntimeVersion:  core.ArtifactRuntimeVersion, GasVersion: core.ArtifactGasVersion,
 		RuntimeSHA256: artifact.RuntimeDigest(), SourceSHA256: artifact.Digest([]byte(sourceCode)),
 		InjectedSHA256: artifact.Digest([]byte(gasInjectedCode)), EntrySHA256: artifact.Digest([]byte(entryCode)),
@@ -348,7 +353,21 @@ replace github.com/lengzhao/vm/contractapi => ./contractapi
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stderr
-	if err := cmd.Run(); err != nil {
+	var buildErr error
+	if c.sandbox != nil {
+		if err := os.Chmod(buildDir, 0755); err != nil {
+			return nil, err
+		}
+		if err := os.Chmod(publishDir, 0777); err != nil {
+			return nil, err
+		}
+		output, err := c.sandbox.Run(ctx, "/usr/local/go/bin/go", tc.env, []sandbox.Mount{{Source: buildDir, Target: "/src", ReadOnly: true}, {Source: publishDir, Target: "/out"}}, "-C", "/src", "build", "-mod=mod", "-o", "/out/artifact", "-trimpath", "-buildvcs=false", "-ldflags=-buildid=", ".")
+		stderr.WriteString(output)
+		buildErr = err
+	} else {
+		buildErr = cmd.Run()
+	}
+	if err := buildErr; err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("contract build: %w", ctx.Err())
 		}
@@ -357,6 +376,9 @@ replace github.com/lengzhao/vm/contractapi => ./contractapi
 	}
 
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(publishDir, 0755); err != nil {
 		return nil, err
 	}
 	record.ExecutablePath = executable

@@ -53,17 +53,17 @@ flowchart TD
 |------|------|
 | 执行超时 | 已实现 |
 | Gas 上限 | 已实现 |
-| 内存上限 | 后置 |
-| 系统调用隔离 | 后置 |
-| Docker | 后置 |
+| 内存上限 | Docker 路径已实现 |
+| 系统调用隔离 | Docker 默认 seccomp；独立过滤器后置 |
+| Docker | 编译与执行已实现，可选 |
 
 ## 5. 可插拔演进
 
 见 [`../sandbox_roadmap.md`](../sandbox_roadmap.md)：
 
 - `ProcessRunner`（当前）
-- `DockerRunner`（候选）
-- `WASMRunner`（长期）
+- `runner/docker`（已实现，可选）
+- `runner/wazero`（D2 已实现，可选）
 
 ## 6. 测试
 

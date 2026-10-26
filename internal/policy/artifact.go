@@ -5,23 +5,36 @@ import (
 	"fmt"
 	"github.com/lengzhao/vm/core"
 	"github.com/lengzhao/vm/internal/artifact"
+	"runtime"
 )
 
 // ArtifactOptions separates accepted policy identities from required guarantees.
 type ArtifactOptions struct {
+	TargetOS           string
+	TargetArch         string
 	RequiredGuarantees core.PolicyGuarantees
 	AcceptedPolicies   []string
 	AllowAnyPolicy     bool
 }
 type ArtifactValidator struct {
-	required core.PolicyGuarantees
-	accepted map[string]bool
-	allowAny bool
+	targetOS, targetArch string
+	required             core.PolicyGuarantees
+	accepted             map[string]bool
+	allowAny             bool
 }
 
 func NewArtifactValidator(o ArtifactOptions, source core.SourcePolicy) (*ArtifactValidator, error) {
 	if source == nil || source.ID() == "" {
 		return nil, fmt.Errorf("artifact source policy required")
+	}
+	if o.TargetOS == "" {
+		o.TargetOS = runtime.GOOS
+	}
+	if o.TargetArch == "" {
+		o.TargetArch = runtime.GOARCH
+	}
+	if !((o.TargetOS == "wasip1" && o.TargetArch == "wasm") || ((o.TargetOS == runtime.GOOS || o.TargetOS == "linux") && o.TargetArch == runtime.GOARCH)) {
+		return nil, fmt.Errorf("unsupported artifact target")
 	}
 	required := o.RequiredGuarantees
 	required.Deterministic = required.Deterministic || core.GuaranteesOf(source).Deterministic
@@ -39,7 +52,7 @@ func NewArtifactValidator(o ArtifactOptions, source core.SourcePolicy) (*Artifac
 		}
 		accepted[id] = true
 	}
-	return &ArtifactValidator{required: required, accepted: accepted, allowAny: o.AllowAnyPolicy}, nil
+	return &ArtifactValidator{targetOS: o.TargetOS, targetArch: o.TargetArch, required: required, accepted: accepted, allowAny: o.AllowAnyPolicy}, nil
 }
 func (v *ArtifactValidator) ValidateArtifact(ctx context.Context, a *core.CompiledContract) error {
 	if ctx == nil {
@@ -60,5 +73,5 @@ func (v *ArtifactValidator) ValidateArtifact(ctx context.Context, a *core.Compil
 	if err := artifact.Validate(ctx, a); err != nil {
 		return err
 	}
-	return artifact.ValidateNativeRules(a)
+	return artifact.ValidateTargetRules(a, v.targetOS, v.targetArch)
 }

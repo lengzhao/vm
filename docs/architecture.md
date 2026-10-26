@@ -45,9 +45,9 @@ flowchart TD
 
 ### 2.3 当前阶段后置能力
 以下能力保留设计方向，但不作为当前主链路阻塞项：
-- 完整系统调用沙箱 / Docker 隔离
-- Object 存储、跨合约 Call、完整链状态读写（含对应 Gas）
-- 合约升级、并行调度框架
+- Wasmtime/TinyGo 等额外后端扩展（D1 Docker 与 D2 WASI/wazero 已可选接入，见 [后端比较](backend_comparison.md)）
+- 持久化链状态与多 Object/所有权（默认 Object 与跨合约 Call 已接入事务及 Gas）
+- 合约升级、面向持久化链状态的生产调度集成（D3 可选 MVCC / 有序并行插件已实现，见 [有序并行执行](parallel_execution.md)）
 - TinyGo 作为默认构建器（当前默认 `go build`，可后续切换）
 
 ## 3. 安全机制
@@ -73,7 +73,7 @@ flowchart TD
 ### 3.4 执行隔离（MVP）
 - 使用独立进程 + 超时执行
 - 子进程仅注入最小环境（`PATH` + `VM_*`），不继承完整宿主环境
-- 复杂沙箱后置
+- 可选 Docker 编译与执行沙箱：禁网、只读文件边界、CPU/内存/PID/tmpfs 配额；ProcessRunner 保持开发用途
 
 ### 3.5 编译缓存
 - 产物路径按源码、策略 ID、实际注入代码、生成入口和 `compilerBuildID` 指纹命名；命中则跳过 `go build`

@@ -88,10 +88,10 @@ type Runner interface {
 `GasMeterFactory` 为每次调用创建独立计量器；`GasMetering` 的消耗、限额和查询共同表达一个计量器职责。
 
 ## 4. 明确后置的模块
-- 完整 `ExecutionEnvironment` 沙箱（Docker/seccomp）
+- Wasmtime/TinyGo 等额外后端扩展（Docker 与 WASI/wazero 已可选，见 [后端比较](backend_comparison.md)）
 - Host Runtime / 默认库链状态后端
 - 外部配置中心（PluginKit 配置装配已实现）
-- 并行执行调度器
+- 面向持久化链状态的生产调度集成（D3 可选有序批量执行已实现，见 [有序并行执行](parallel_execution.md)）
 - 合约升级机制
 
 ## 5. 包结构原则

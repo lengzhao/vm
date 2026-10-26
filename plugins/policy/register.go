@@ -21,6 +21,8 @@ func New(c Config, d Deps) (core.SourcePolicy, error) {
 func init() { pluginkit.Register("policy/go", New) }
 
 type ArtifactConfig struct {
+	TargetOS           string   `json:"targetOS"`
+	TargetArch         string   `json:"targetArch"`
 	RequireDeterminism bool     `json:"requireDeterminism"`
 	AllowAnyPolicy     bool     `json:"allowAnyPolicy"`
 	AcceptedPolicies   []string `json:"acceptedPolicies"`
@@ -30,7 +32,7 @@ type ArtifactDeps struct {
 }
 
 func NewArtifact(c ArtifactConfig, d ArtifactDeps) (core.ArtifactValidator, error) {
-	return impl.NewArtifactValidator(impl.ArtifactOptions{
+	return impl.NewArtifactValidator(impl.ArtifactOptions{TargetOS: c.TargetOS, TargetArch: c.TargetArch,
 		RequiredGuarantees: core.PolicyGuarantees{Deterministic: c.RequireDeterminism},
 		AcceptedPolicies:   c.AcceptedPolicies, AllowAnyPolicy: c.AllowAnyPolicy,
 	}, d.Policy)

@@ -9,9 +9,9 @@
 - **开发友好**：降低智能合约开发门槛，让熟悉Go语言的开发者无缝接入
 - **可执行流水线**：Compile → Deploy → Execute 已打通（ProcessRunner）
 - **Gas计费**：入口/函数/循环控制点 + 默认库（只读/Log）计费；`EstimateGas` 静态启发式估算与 DryRun
-- **并行执行（设计方向）**：通过对象隔离支持交易并行，尚未实现
+- **可选有序并行执行**：MVCC 按键冲突检测、推测执行与按序提交；需满足独占状态写入等确定性前提
 
-> 注意：当前为 Alpha/MVP。ProcessRunner 仅有进程超时与 Gas 限制，**不应用于执行不可信合约**。见 [docs/sandbox_roadmap.md](docs/sandbox_roadmap.md)。
+> 注意：当前为 Alpha/MVP。ProcessRunner 仅有进程超时与 Gas 限制，**不应用于执行不可信合约**。可选 Docker 编译与执行沙箱已实现，需显式配置；见 [沙箱配置与边界](docs/sandbox_roadmap.md)。
 
 ## 已实现功能
 
@@ -19,7 +19,7 @@
 1. **安全审查模块**：Import 白名单、危险 AST 节点、包级可变状态检查
 2. **ABI生成模块**：从合约源代码提取接口信息
 3. **编译器模块**：Gas 注入、入口生成、`go build` 产出真实可执行文件
-4. **Runner**：进程超时执行合约产物，JSON 请求/响应
+4. **Runner**：Process / Docker / WASI-wazero 插件化执行，复用 JSON / Host 协议；Docker 支持编译隔离和 OS 配额，WASI 支持无默认宿主权限的进程内运行
 5. **Gas计费模块**：宿主计量 + `contractapi` 统一扣费 + `gas_profile.json` / `EstimateGas`
 6. **合约管理模块**：部署、存储和查询合约产物（含 GasProfile）
 7. **Host Runtime / contractapi**：只读链上下文与事件日志（MVP）
@@ -140,7 +140,8 @@ func Add(a, b int) int {
 - [安全审查规范](docs/security_review.md)
 - [默认库接口规范](docs/default_library.md)
 - [Host Runtime 设计](docs/host_runtime.md)
-- [沙箱路线图](docs/sandbox_roadmap.md)
+- [沙箱配置与边界](docs/sandbox_roadmap.md)
+- [后端实测比较（D2）](docs/backend_comparison.md)
 - [执行环境设计](docs/execution_environment.md)
 - [Gas计费机制](docs/gas_metering.md)
 - [ABI生成与关键字处理](docs/abi_generation.md)
@@ -213,3 +214,6 @@ go run ./examples/plugins presets/default.yaml
 ```
 
 参见 [插件架构与扩展指南](docs/plugins.md) 和 [默认预设](presets/default.yaml)。
+
+
+可选批量执行：`state/mvcc` + `batch/ordered` 支持有界推测执行、按输入顺序提交与冲突重执行；现有默认配置不变。配置见 [`presets/parallel.yaml`](presets/parallel.yaml)，确定性前提、错误及已提交前缀语义见 [有序并行执行](docs/parallel_execution.md)。

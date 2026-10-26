@@ -10,4 +10,5 @@ import (
 type Config struct{}
 
 func New(Config) (core.StateStore, error) { return impl.New(), nil }
-func init()                               { pluginkit.Register("state/memory", New) }
+func NewMVCC(Config) (*impl.MVCC, error)  { return impl.NewMVCC(), nil }
+func init()                               { pluginkit.Register("state/memory", New); pluginkit.Register("state/mvcc", NewMVCC) }

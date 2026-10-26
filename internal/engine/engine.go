@@ -97,15 +97,12 @@ func (e *Engine) execute(ctx context.Context, req core.ExecutionRequest, dryRun 
 		return nil, err
 	}
 	if req.Address == "" || req.Function == "" {
-		return nil, fmt.Errorf("contract address and function required")
+		return nil, &core.ExecutionError{Code: core.CodeInvalidRequest, Message: "contract address and function required"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.options.ExecutionTimeout)
 	defer cancel()
-	contract, err := e.deps.Contracts.Get(ctx, req.Address)
+	contract, err := e.loadExecution(ctx, req.Address)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load contract: %w", err)
-	}
-	if err := e.deps.Validator.ValidateArtifact(ctx, contract); err != nil {
 		return nil, err
 	}
 	tx, err := e.deps.State.Begin(ctx)
@@ -122,6 +119,58 @@ func (e *Engine) execute(ctx context.Context, req core.ExecutionRequest, dryRun 
 				executionErr = errors.Join(executionErr, stateError(rollbackErr))
 			}
 		}
+		if executionErr != nil && out != nil {
+			out.Data = nil
+			out.Events = nil
+		}
+	}()
+	out, executionErr = e.runTransaction(ctx, req, contract, tx)
+	if executionErr == nil && !dryRun {
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			executionErr = stateError(commitErr)
+		} else {
+			committed = true
+		}
+	}
+	if dryRun && out != nil {
+		out.Events = nil
+	}
+	return out, executionErr
+}
+
+// ExecuteTransaction leaves transaction ownership with its trusted caller.
+func (e *Engine) ExecuteTransaction(ctx context.Context, req core.ExecutionRequest, tx core.StateTransaction) (*core.ExecuteResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, fmt.Errorf("state transaction required")
+	}
+	if req.Address == "" || req.Function == "" {
+		return nil, &core.ExecutionError{Code: core.CodeInvalidRequest, Message: "contract address and function required"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, e.options.ExecutionTimeout)
+	defer cancel()
+	contract, err := e.loadExecution(ctx, req.Address)
+	if err != nil {
+		return nil, err
+	}
+	return e.runTransaction(ctx, req, contract, tx)
+}
+
+func (e *Engine) loadExecution(ctx context.Context, address string) (*core.CompiledContract, error) {
+	contract, err := e.deps.Contracts.Get(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load contract: %w", err)
+	}
+	if err := e.deps.Validator.ValidateArtifact(ctx, contract); err != nil {
+		return nil, err
+	}
+	return contract, nil
+}
+
+func (e *Engine) runTransaction(ctx context.Context, req core.ExecutionRequest, contract *core.CompiledContract, tx core.StateTransaction) (out *core.ExecuteResult, executionErr error) {
+	defer func() {
 		if executionErr != nil && out != nil {
 			out.Data = nil
 			out.Events = nil
@@ -198,16 +247,6 @@ func (e *Engine) execute(ctx context.Context, req core.ExecutionRequest, dryRun 
 	}
 	if err == nil && ctx.Err() != nil {
 		err = stateError(ctx.Err())
-	}
-	if err == nil && !dryRun {
-		if commitErr := tx.Commit(ctx); commitErr != nil {
-			err = stateError(commitErr)
-		} else {
-			committed = true
-		}
-	}
-	if dryRun {
-		out.Events = nil
 	}
 	return out, err
 }

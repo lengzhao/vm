@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-当前阶段执行环境实现为最小 `Runner`：独立进程 + 超时 + JSON 输入输出。完整沙箱（系统调用限制、Docker）后置。
+默认 `ProcessRunner` 提供独立进程、超时与双向 JSON 协议。D1 已实现可选 Docker 编译与执行沙箱，D2 已新增 compiler/wasip1 与 runner/wazero 插件；配置及资源边界见 [沙箱指南](sandbox_roadmap.md)。下方历史协议示例以 [当前调用协议](call_protocol.md) 为准。
 
 ## 2. 编译与执行
 
@@ -50,10 +50,10 @@
 - 进程隔离
 - 执行超时
 - Gas 上限（`VM_GAS_LIMIT`）
-- 后续可增强：Docker、seccomp、内存上限
+- 可选 Docker：编译/执行禁网、文件隔离、CPU/内存/PID/tmpfs 限制；默认 ProcessRunner 无这些 OS 保证
 
-## 5. 并行执行（后置）
-对象隔离与 ReadList/WriteList 并行判断由集成方负责；VM 库先保证单次调用正确性。
+## 5. 可选有序并行执行
+D3 提供 `state/mvcc` 与 `batch/ordered`：按键版本检测冲突，有界并行推测、按输入顺序提交及冲突重执行。需无外部并发写入，非整批原子提交，详见 [有序并行执行](parallel_execution.md)。
 
 ## 6. 作为开源库集成
 本项目是 Go 库，不提供业务 `main.go`。集成方通过 `NewVMEngine` 使用 Compile/Deploy/Execute，并在后续实现默认库 Host 后端。

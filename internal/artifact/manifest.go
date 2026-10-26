@@ -206,6 +206,11 @@ func Validate(ctx context.Context, a *core.CompiledContract) error {
 
 // ValidateNativeRules is the compatibility check for the built-in native runtime.
 func ValidateNativeRules(a *core.CompiledContract) error {
+	return ValidateTargetRules(a, runtime.GOOS, runtime.GOARCH)
+}
+
+// ValidateTargetRules checks runtime semantics and an explicitly selected backend target.
+func ValidateTargetRules(a *core.CompiledContract, goos, goarch string) error {
 	if a == nil || a.Manifest == nil {
 		return unsupported("artifact manifest required")
 	}
@@ -213,7 +218,7 @@ func ValidateNativeRules(a *core.CompiledContract) error {
 	if b.RuntimeVersion != core.ArtifactRuntimeVersion || b.GasVersion != core.ArtifactGasVersion || b.RuntimeSHA256 != RuntimeDigest() {
 		return unsupported("unsupported runtime or gas rules")
 	}
-	if b.Toolchain.GOOS != runtime.GOOS || b.Toolchain.GOARCH != runtime.GOARCH || b.Toolchain.CGOEnabled {
+	if b.Toolchain.GOOS != goos || b.Toolchain.GOARCH != goarch || b.Toolchain.CGOEnabled {
 		return unsupported("unsupported native artifact target")
 	}
 	if a.Address != "" && a.Deployment == nil {

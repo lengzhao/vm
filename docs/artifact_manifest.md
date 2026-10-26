@@ -7,15 +7,15 @@
 `core.CompiledContract` 携带 `Manifest` 和 `ManifestSHA256`。清单记录：
 
 - `version`：清单 schema，当前为 1；`protocol_version` 与 `abi_version` 分别绑定调用协议与 ABI schema。
-- `build.compiler_version`：编译流水线版本；当前为 `pipeline-v11-artifact-manifest`。
-- `build.toolchain`：实际 Go 版本、Go 可执行文件 SHA-256、GOOS/GOARCH、CGO 开关及固定构建参数。
+- `build.compiler_version`：编译流水线版本；当前为 `pipeline-v13-cross-contract`。
+- `build.toolchain`：实际 Go 版本、Go 可执行文件 SHA-256、GOOS/GOARCH、CGO 开关及固定构建参数；Docker 编译额外记录可选 `container_image` 镜像 ID，并纳入缓存与摘要。
 - `build.source_sha256`：原始源码字节摘要；`injected_sha256` 和 `entry_sha256` 是实际插桩源码及生成入口摘要。
 - `build.runtime_version` / `gas_version`：当前为 `contractapi-v3-call` / `go-gas-v3-call`；`runtime_sha256` 绑定内嵌的 contractapi、Object、Call、Gas 与协议源码。
 - `binary_sha256`：完整可执行文件摘要。
 - `abi_sha256` / `gas_profile_sha256`：ABI、GasProfile 的规范 JSON 摘要；没有画像时摘要输入为 JSON `null`。
 - `metadata_sha256`：以下对象的规范 JSON 摘要，字段顺序依次为 `source_hash`、`source_policy`、`guarantees`、`protocol_version`，值来自 CompiledContract。
 
-摘要均为完整、小写的 SHA-256 十六进制字符串。规范 JSON 是 Go `encoding/json.Marshal` 对相应 core/abi 类型的输出，不带缩进；map 键按该编码器排序。`ManifestSHA256` 是整个 Manifest 的同种规范 JSON 摘要。`runtime_sha256` 的输入是 `[contractapi.Source, contractapi.GasSource, contractapi.ProtocolSource]` 的 JSON 编码。
+摘要均为完整、小写的 SHA-256 十六进制字符串。规范 JSON 是 Go `encoding/json.Marshal` 对相应 core/abi 类型的输出，不带缩进；map 键按该编码器排序。`ManifestSHA256` 是整个 Manifest 的同种规范 JSON 摘要。`runtime_sha256` 的输入是 `[contractapi.Source, contractapi.GasSource, contractapi.ProtocolSource, contractapi.ObjectSource, contractapi.CallSource]` 的 JSON 编码。
 
 `SourceHash` 为历史命名，继续表示构建缓存身份，现在使用完整的 64 字符十六进制摘要；原始源码摘要应读取 `Manifest.Build.SourceSHA256`。部署地址、路径和时间不参与编译内容摘要；B4 的版本化地址规则及部署身份绑定见 [确定性部署](deployment.md)。
 

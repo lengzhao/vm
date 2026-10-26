@@ -165,3 +165,36 @@ func init() { pluginkit.Register("my/runner", New) }
 ## 跨合约调用
 
 `ContractCaller` 与 ObjectStore 是每帧的作用域能力，由 Engine 注入 Runner context。所有帧共享根事务作为临时 store，仅最外层成功才发布；不新增状态后端的保存点或补偿接口。`engine/default` 的 `maxCallDepth` 默认 8、可配置 1–32。Call 的消息、Gas、事件及版本见 [跨合约调用](cross_contract.md)。
+
+
+## Docker 编译与执行沙箱（D1）
+
+完整可编辑配置见 [`presets/docker.yaml`](../presets/docker.yaml)，运行边界和验收命令见 [沙箱指南](sandbox_roadmap.md)。`plugins/all` 已注册 `runner/docker`；工厂只验证配置，不启动容器。
+
+- `compiler/go.config.sandbox`：可选对象，包含 `image`（必填本地 `sha256:<64位小写十六进制>` 镜像 ID）、`binary`（Docker CLI，默认 `docker`）、`memoryMB`、`cpus`（整数核配额）、`pids`、`tmpMB`。资源值为 0 使用默认值，负数拒绝。编译默认 1024 MiB / 1 CPU / 256 PID / 512 MiB tmpfs，默认超时 2 分钟。`goVersion` 必须匹配镜像内实际 `/usr/local/go/bin/go version`；沙箱不使用 `goBinary`。
+- `runner/docker.config`：`timeout` 和必填 `sandbox`，字段同上；默认 30 秒、256 MiB / 1 CPU / 128 PID / 64 MiB tmpfs。CPU 是调度配额，累计运行时间由 timeout 限制。
+- `policy/artifact.config.targetOS`：Docker 配置为 `linux`；`targetArch` 默认本机架构且只支持本机架构。默认校验仍为本机平台。Runner 独立检查 Linux 目标，ProcessRunner 独立检查本机目标，错误装配不会回退执行。
+
+core 的 Compiler、Runner、Engine、StateStore 能力接口未扩大。产物工具链可选字段 `container_image` 记录编译镜像 ID，并参与缓存及清单摘要；它是构建身份，不是可信来源认证或沙箱执行证明。编译镜像与执行镜像可以不同，但必须均为受信任且匹配 Linux/架构的不可变镜像。
+
+## WASI 编译与 wazero 执行插件（D2）
+
+完整配置见 [`presets/wasi.yaml`](../presets/wasi.yaml)。`compiler/wasip1` 与 `compiler/go` 具有相同 Config/Deps，各自选择固定目标：前者为 `wasip1/wasm`，后者维持宿主平台或 Docker Linux/宿主架构。编译产物和缓存包含实际目标，不能互换；`compiler/wasip1.config.sandbox` 可组合 D1 Docker 构建隔离，Go 镜像、版本及资源参数规则不变。默认 WASI 编译仍在宿主运行，不应误认为已经隔离编译器。
+
+`runner/wazero` 配置：`timeout` 默认 30s；`memoryMB` 默认 256，正整数上限 4096，表示 Wasm 线性内存上限；`maxModuleMB` 默认 64，正整数上限 256，限制读入模块的字节数；`engine` 可选 `compiler`、`interpreter` 或空（wazero 按平台选择）。0 使用资源默认值，负数拒绝。工厂不创建活动 runtime，每次调用独立实例，所有执行都开启 `WithCloseOnContextDone`，支持终止未插桩的 Wasm 死循环。当前实现每帧重新编译 Wasm，无常驻 JIT 缓存。单次 timeout 包含产物校验、模块编译/实例化、执行和嵌套子调用，父帧预算不会因进入子帧重新开始。
+
+`policy/artifact` 对 WASI 图显式配置 `targetOS: wasip1`、`targetArch: wasm`；源码策略、确定性保证及 runtime/Gas 版本校验仍生效。Runner 自身也验证目标，不能绕过错误组合。现有 core Compiler/Runner/Engine 契约未增加 Wasm 专用方法；其它编译器和 Runner 继续独立可选。
+
+三类 Runner 共用 `internal/execution.Session` 的 JSON/Host/Gas/回复预算和结果分类。WASI 的初始请求和同步 Host 回复使用调用私有的内存队列，不经阻塞 stdin 管道；进程路径继续使用可取消管道。不能将私有队列用于并发多线程 guest，当前 Go WASI 为单线程执行模型。
+
+WASI 默认不授予文件挂载、socket、宿主时钟/随机源或宿主环境变量，只提供显式 VM 上下文。Wasm 内存上限不包含 wazero JIT、模块验证、Go 宿主分配或整链多个帧的总内存；`timeout` 也不是 JIT/验证阶段的硬实时抢占，宿主回调必须合作取消。该插件提供 Wasm 隔离原型，不能把它的线性内存上限当作 D1 的 OS 进程内存配额。生产建议及实测见 [后端比较](backend_comparison.md)。
+
+
+## D3：MVCC 与有序并行批量插件
+
+- `state/mvcc` 同时提供 `core.StateStore` 与 `core.SnapshotStore`；`state/memory` 仍只需最小 Begin 接口。SnapshotTransaction 额外支持只验证不发布的 Validate，Commit 对读写访问集合原子校验。
+- `engine/default` 具体实现额外提供 `core.TransactionExecutor`，执行调用方事务但不提交/回滚；原 `core.Engine` 不增加方法。
+- `batch/ordered` 的依赖仅为 `state: SnapshotStore` 和 `executor: TransactionExecutor`。配置 workers（默认 4，1–64）、maxBatch（默认 1024，1–65536），0 取默认。工厂不获取活动资源，不强制具体状态或 Runner 实现。
+- `engine/batched` 将独立 Engine 与 BatchExecutor 组合供 assembly 根节点使用，不接管它们的生命周期；明确配置同一 Engine / State 实例，避免业务状态分叉。原默认图不变。
+
+完整配置见 `presets/parallel.yaml`，算法、业务/基础设施错误分类、已提交前缀与确定性前提见 [有序并行执行](parallel_execution.md)。必须无外部并发写入或产物替换，不将资源故障称为确定性交易结果；不提供整批原子回滚。
