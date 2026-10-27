@@ -26,16 +26,17 @@ import (
 
 // Compiler 编译器模块实现
 type Compiler struct {
-	wasi         bool
-	sandbox      *sandbox.Docker
-	goBinary     string
-	goVersion    string
-	abiGenerator core.ABIGenerator
-	outputDir    string
-	buildTimeout time.Duration
-	policy       core.SourcePolicy
-	injector     core.GasInjector
-	profiler     core.GasProfileBuilder
+	wasi           bool
+	sandbox        *sandbox.Docker
+	goBinary       string
+	goVersion      string
+	abiGenerator   core.ABIGenerator
+	outputDir      string
+	buildTimeout   time.Duration
+	maxSourceBytes int
+	policy         core.SourcePolicy
+	injector       core.GasInjector
+	profiler       core.GasProfileBuilder
 }
 
 type Options struct {
@@ -45,6 +46,7 @@ type Options struct {
 	GoVersion          string
 	OutputDir          string
 	BuildTimeout       time.Duration
+	MaxSourceBytes     int
 	RequireDeterminism bool
 }
 type Deps struct {
@@ -56,6 +58,12 @@ type Deps struct {
 
 // New constructs a compiler exclusively from explicit dependencies.
 func New(c Options, d Deps) (*Compiler, error) {
+	if c.MaxSourceBytes < 0 {
+		return nil, fmt.Errorf("maxSourceBytes must be nonnegative")
+	}
+	if c.MaxSourceBytes == 0 {
+		c.MaxSourceBytes = 1 << 20
+	}
 	if d.Policy == nil || d.ABI == nil || d.Injector == nil || d.Profiler == nil {
 		return nil, fmt.Errorf("compiler dependencies required")
 	}
@@ -77,13 +85,18 @@ func New(c Options, d Deps) (*Compiler, error) {
 	if c.GoVersion == "" {
 		c.GoVersion = runtime.Version()
 	}
-	return &Compiler{wasi: c.WASI, sandbox: c.Sandbox, goBinary: c.GoBinary, goVersion: c.GoVersion, outputDir: c.OutputDir, buildTimeout: c.BuildTimeout, policy: d.Policy, abiGenerator: d.ABI, injector: d.Injector, profiler: d.Profiler}, nil
+	return &Compiler{wasi: c.WASI, sandbox: c.Sandbox, goBinary: c.GoBinary, goVersion: c.GoVersion, outputDir: c.OutputDir, buildTimeout: c.BuildTimeout, maxSourceBytes: c.MaxSourceBytes, policy: d.Policy, abiGenerator: d.ABI, injector: d.Injector, profiler: d.Profiler}, nil
 }
 
 // Compile 编译源代码
 func (c *Compiler) Compile(ctx context.Context, sourceCode string) (*core.CompiledContract, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.buildTimeout)
+	defer cancel()
+	if len(sourceCode) > c.maxSourceBytes {
+		return nil, fmt.Errorf("source exceeds %d byte limit", c.maxSourceBytes)
 	}
 	if strings.TrimSpace(sourceCode) == "" {
 		return nil, fmt.Errorf("source code cannot be empty")
@@ -350,7 +363,7 @@ replace github.com/lengzhao/vm/contractapi => ./contractapi
 	cmd.WaitDelay = 100 * time.Millisecond
 	cmd.Dir = buildDir
 	cmd.Env = tc.env
-	var stderr bytes.Buffer
+	var stderr diagnosticBuffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stderr
 	var buildErr error
@@ -362,7 +375,7 @@ replace github.com/lengzhao/vm/contractapi => ./contractapi
 			return nil, err
 		}
 		output, err := c.sandbox.Run(ctx, "/usr/local/go/bin/go", tc.env, []sandbox.Mount{{Source: buildDir, Target: "/src", ReadOnly: true}, {Source: publishDir, Target: "/out"}}, "-C", "/src", "build", "-mod=mod", "-o", "/out/artifact", "-trimpath", "-buildvcs=false", "-ldflags=-buildid=", ".")
-		stderr.WriteString(output)
+		_, _ = stderr.Write([]byte(output))
 		buildErr = err
 	} else {
 		buildErr = cmd.Run()

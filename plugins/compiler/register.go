@@ -18,6 +18,7 @@ type Config struct {
 	GoVersion          string         `json:"goVersion"`
 	OutputDir          string         `json:"outputDir"`
 	BuildTimeout       string         `json:"buildTimeout"`
+	MaxSourceBytes     int            `json:"maxSourceBytes"`
 	RequireDeterminism bool           `json:"requireDeterminism"`
 }
 type Deps struct {
@@ -62,6 +63,6 @@ func newCompiler(c Config, d Deps, wasi bool) (core.ContractCompiler, error) {
 			return nil, fmt.Errorf("buildTimeout must be positive")
 		}
 	}
-	return implementation.New(implementation.Options{WASI: wasi, Sandbox: docker, GoBinary: c.GoBinary, GoVersion: c.GoVersion, OutputDir: c.OutputDir, BuildTimeout: timeout, RequireDeterminism: c.RequireDeterminism}, implementation.Deps{Policy: d.Policy, ABI: d.ABI, Injector: d.Injector, Profiler: d.Profiler})
+	return implementation.New(implementation.Options{WASI: wasi, Sandbox: docker, GoBinary: c.GoBinary, GoVersion: c.GoVersion, OutputDir: c.OutputDir, BuildTimeout: timeout, MaxSourceBytes: c.MaxSourceBytes, RequireDeterminism: c.RequireDeterminism}, implementation.Deps{Policy: d.Policy, ABI: d.ABI, Injector: d.Injector, Profiler: d.Profiler})
 }
 func init() { pluginkit.Register("compiler/go", New); pluginkit.Register("compiler/wasip1", NewWASI) }

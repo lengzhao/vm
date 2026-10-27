@@ -161,14 +161,18 @@ go run ./examples/complete
 
 运行所有测试：
 ```bash
-go test ./...
+make check
 ```
+
+`make check` 顺序执行普通测试、race、vet 和差异检查；`make test` 仅运行普通测试。真实 Docker 隔离测试需按沙箱文档显式配置环境。
 
 ## 构建
 
 ```bash
-go build .
+make build
 ```
+
+项目为 Go 库，`make build` 校验全部包；`make run` 运行 basic 示例。跨平台校验可执行 `make build-linux TARGET_ARCH=arm64`。
 
 ## 许可证
 
@@ -191,7 +195,7 @@ go build .
 
 设置 `VMConfig.RequireDeterminism=true` 启用 `go-deterministic-v3-call`。它强制安全审查，禁止机器时间、浮点/指针观测和直接输出，仅开放受限值计算及链上下文 API；严格模式拒绝没有匹配策略标签的旧产物。默认使用开发模式，确定性策略需显式启用。
 
-详见 [确定性源码策略](docs/deterministic_execution.md)。该策略不等同于完整沙箱或完整共识执行规范；工具链固定、产物摘要及[确定性部署地址](docs/deployment.md)已实现；来源认证和状态事务仍后置。
+详见 [确定性源码策略](docs/deterministic_execution.md)。该策略不等同于完整沙箱或完整共识执行规范；工具链固定、产物摘要及[确定性部署地址](docs/deployment.md)已实现；状态事务、持久化与恢复批次已实现；来源认证仍由集成宿主负责。
 
 
 ## ABI 与调用协议

@@ -86,7 +86,7 @@ rt, err := assembly.Build(ctx, cfg)
 
 ## Go 编译工具链
 
-`compiler/go` 可配置 `goBinary`（Go 可执行文件路径或命令名）与 `goVersion`（完整版本，例如 `go1.26.1`）。默认从 PATH 解析 `go`，版本必须与构建 VM 的 Go 版本完全一致。每次 Compile 在缓存查找前探测实际版本和宿主平台，不匹配直接失败；探测和构建共用 `buildTimeout` 预算及调用方取消信号。插件工厂不启动工具链进程。
+`compiler/go` 可配置 `goBinary`（Go 可执行文件路径或命令名）与 `goVersion`（完整版本，例如 `go1.26.1`）。默认从 PATH 解析 `go`，版本必须与构建 VM 的 Go 版本完全一致。每次 Compile 在缓存查找前探测实际版本和宿主平台，不匹配直接失败；源码处理、探测和构建共用从 Compile 入口开始的 `buildTimeout` 预算及调用方取消信号。插件工厂不启动工具链进程。`maxSourceBytes` 默认 1 MiB，正数可调整，负数拒绝；超限源码在审查/AST 解析前拒绝。本地工具链诊断最多保留 64 KiB 前缀并标记截断，后续输出继续排空。同步自定义插件和单次解析不能被 context 强制抢占，阶段之间观察取消；这些限制不等于编译器 CPU/内存沙箱。
 
 ```yaml
 compiler:
@@ -95,6 +95,7 @@ compiler:
     goBinary: /opt/go/bin/go
     goVersion: go1.26.1
     buildTimeout: 30s
+    maxSourceBytes: 1048576
   deps:
     policy: policy
     abi: abi
@@ -181,7 +182,7 @@ core 的 Compiler、Runner、Engine、StateStore 能力接口未扩大。产物�
 
 完整配置见 [`presets/wasi.yaml`](../presets/wasi.yaml)。`compiler/wasip1` 与 `compiler/go` 具有相同 Config/Deps，各自选择固定目标：前者为 `wasip1/wasm`，后者维持宿主平台或 Docker Linux/宿主架构。编译产物和缓存包含实际目标，不能互换；`compiler/wasip1.config.sandbox` 可组合 D1 Docker 构建隔离，Go 镜像、版本及资源参数规则不变。默认 WASI 编译仍在宿主运行，不应误认为已经隔离编译器。
 
-`runner/wazero` 配置：`timeout` 默认 30s；`memoryMB` 默认 256，正整数上限 4096，表示 Wasm 线性内存上限；`maxModuleMB` 默认 64，正整数上限 256，限制读入模块的字节数；`engine` 可选 `compiler`、`interpreter` 或空（wazero 按平台选择）。0 使用资源默认值，负数拒绝。工厂不创建活动 runtime，每次调用独立实例，所有执行都开启 `WithCloseOnContextDone`，支持终止未插桩的 Wasm 死循环。当前实现每帧重新编译 Wasm，无常驻 JIT 缓存。单次 timeout 包含产物校验、模块编译/实例化、执行和嵌套子调用，父帧预算不会因进入子帧重新开始。
+`runner/wazero` 配置：`timeout` 默认 30s；`memoryMB` 默认 256，正整数上限 4096，表示 Wasm 线性内存上限；`maxModuleMB` 默认 64，正整数上限 256，限制读入模块的字节数；`engine` 可选 `compiler`、`interpreter` 或空（wazero 按平台选择）。0 使用资源默认值，负数拒绝。工厂不创建活动 runtime，每次调用独立实例，所有执行都开启 `WithCloseOnContextDone`，支持终止未插桩的 Wasm 死循环。编译代码通过 [wazero CompilationCache](https://pkg.go.dev/github.com/tetratelabs/wazero@v1.12.0#CompilationCache) 按已重新校验的二进制摘要复用，同一 Runner 的配置固定；同代编译串行，执行仍可并发。每个 Runner 最多保留最近一个产物的闲置编译缓存，切换产物时淘汰旧代；旧代如有活跃帧，仅保留至最后一个 runtime 关闭。此数量上限不包含活跃请求，也不是编译代码的字节配额，线性内存限制不涵盖 JIT 代码。Runner 的可选 `Stop(ctx)` 拒绝新请求，等待活跃帧退出后释放代码；超时可重试。直接使用 Runner 的调用方也须关闭它。单次 timeout 包含产物校验、模块编译/实例化、执行和嵌套子调用，父帧预算不会因进入子帧重新开始。
 
 `policy/artifact` 对 WASI 图显式配置 `targetOS: wasip1`、`targetArch: wasm`；源码策略、确定性保证及 runtime/Gas 版本校验仍生效。Runner 自身也验证目标，不能绕过错误组合。现有 core Compiler/Runner/Engine 契约未增加 Wasm 专用方法；其它编译器和 Runner 继续独立可选。
 

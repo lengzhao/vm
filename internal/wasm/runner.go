@@ -25,7 +25,10 @@ type Options struct {
 	MaxModuleMB int
 	Engine      string
 }
-type Runner struct{ options Options }
+type Runner struct {
+	options Options
+	code    compilationCaches
+}
 
 func New(o Options) (*Runner, error) {
 	if o.Timeout < 0 || o.MemoryMB < 0 || o.MemoryMB > 4096 || o.MaxModuleMB < 0 || o.MaxModuleMB > 256 {
@@ -99,7 +102,16 @@ func (r *Runner) Run(ctx context.Context, c *core.CompiledContract, req core.Cal
 	case "interpreter":
 		config = wazero.NewRuntimeConfigInterpreter()
 	}
-	config = config.WithMemoryLimitPages(uint32(r.options.MemoryMB) * 16).WithCloseOnContextDone(true)
+	code, release, err := r.acquireCache(guestCtx, c.Manifest.BinarySHA256)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := release(); err != nil {
+			returnErr = errors.Join(returnErr, failure("close WASI compilation cache", err))
+		}
+	}()
+	config = config.WithMemoryLimitPages(uint32(r.options.MemoryMB) * 16).WithCloseOnContextDone(true).WithCompilationCache(code.cache)
 	runtime := wazero.NewRuntimeWithConfig(guestCtx, config)
 	defer func() {
 		if err := runtime.Close(context.Background()); err != nil {
@@ -117,7 +129,12 @@ func (r *Runner) Run(ctx context.Context, c *core.CompiledContract, req core.Cal
 			module = module.WithEnv(key, value)
 		}
 	}
-	_, runErr := runtime.InstantiateWithConfig(guestCtx, data, module)
+	compiled, runErr := code.compile(guestCtx, runtime, data)
+	if runErr == nil {
+		// InstantiateWithConfig marks compiled code for deletion at guest close.
+		// This explicit path leaves its lifetime with the leased cache instead.
+		_, runErr = runtime.InstantiateModule(guestCtx, compiled, module)
+	}
 	var exit *sys.ExitError
 	if errors.As(runErr, &exit) && exit.ExitCode() == 0 {
 		runErr = nil

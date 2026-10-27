@@ -25,6 +25,7 @@ func TestWazeroRejectsNativeArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = r.Stop(context.Background()) })
 	c := artifacttest.Seal(t, &core.CompiledContract{ProtocolVersion: core.ProtocolVersion})
 	if _, err := r.Run(context.Background(), c, core.CallRequest{Function: "F"}); err == nil {
 		t.Fatal("native artifact accepted")
@@ -45,6 +46,7 @@ func TestWazeroTerminatesUnmeteredLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := New(Options{Timeout: 100 * time.Millisecond})
+	t.Cleanup(func() { _ = r.Stop(context.Background()) })
 	started := time.Now()
 	_, err := r.Run(context.Background(), c, core.CallRequest{Function: "F"})
 	var e *core.ExecutionError
@@ -72,6 +74,7 @@ func TestWazeroRejectsOversizedAndMalformedModules(t *testing.T) {
 				t.Fatal(err)
 			}
 			r, _ := New(Options{MaxModuleMB: 1})
+			t.Cleanup(func() { _ = r.Stop(context.Background()) })
 			_, err := r.Run(context.Background(), c, core.CallRequest{Function: "F"})
 			var e *core.ExecutionError
 			if !errors.As(err, &e) || e.Code != core.CodeProcessFailure {
@@ -84,6 +87,7 @@ func TestWazeroPreCanceledDoesNotReadArtifact(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	r, _ := New(Options{})
+	t.Cleanup(func() { _ = r.Stop(context.Background()) })
 	_, err := r.Run(ctx, nil, core.CallRequest{Function: "F"})
 	var e *core.ExecutionError
 	if !errors.As(err, &e) || e.Code != core.CodeCanceled {
@@ -115,6 +119,7 @@ func TestWazeroRejectsUnprovidedHostImports(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := New(Options{})
+	t.Cleanup(func() { _ = r.Stop(context.Background()) })
 	_, err := r.Run(context.Background(), c, core.CallRequest{Function: "F"})
 	if err == nil || !strings.Contains(err.Error(), "env") {
 		t.Fatalf("unknown host import: %v", err)

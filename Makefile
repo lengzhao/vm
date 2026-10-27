@@ -1,95 +1,65 @@
-# 智能合约虚拟机 Makefile
+# VM is a Go library; examples are the runnable entry points.
+GOCMD ?= go
+TEST_TIMEOUT ?= 5m
+TARGET_ARCH ?= amd64
 
-# Go parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
-GOFMT=$(GOCMD) fmt
-GOVET=$(GOCMD) vet
-
-# Binary name
-BINARY_NAME=vm
-BINARY_UNIX=$(BINARY_NAME)_unix
-
-# Default target
 all: build
 
-# Build the project
 build:
-	$(GOBUILD) -o $(BINARY_NAME) -v
+	$(GOCMD) build ./...
 
-# Install dependencies
 deps:
-	$(GOMOD) tidy
+	$(GOCMD) mod tidy
 
-# Format source code
 fmt:
-	$(GOFMT) ./...
+	$(GOCMD) fmt ./...
 
-# Vet source code
 vet:
-	$(GOVET) ./...
+	$(GOCMD) vet ./...
 
-# Run tests
 test:
-	$(GOTEST) -v ./...
+	$(GOCMD) test -p 1 -timeout $(TEST_TIMEOUT) ./...
 
-# Run tests with coverage
+test-race:
+	$(GOCMD) test -race -p 1 -timeout $(TEST_TIMEOUT) ./...
+
+# Recipes are sequential even when the caller uses make -j.
+check:
+	$(MAKE) test
+	$(MAKE) test-race
+	$(MAKE) vet
+	git diff --check
+
 test-cover:
-	$(GOTEST) -v -coverprofile=coverage.out ./...
+	$(GOCMD) test -p 1 -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 
-# Clean build artifacts
 clean:
-	$(GOCLEAN)
-	rm -f $(BINARY_NAME)
-	rm -f $(BINARY_UNIX)
-	rm -f coverage.out
-	rm -f coverage.html
+	$(GOCMD) clean ./...
+	rm -f coverage.out coverage.html
 
-# Install the binary
 install:
-	$(GOBUILD) -o $(GOPATH)/bin/$(BINARY_NAME)
+	$(GOCMD) install .
 
-# Run the project
 run:
-	$(GOCMD) run .
+	$(GOCMD) run ./examples/basic
 
-# Build for different platforms
 build-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BINARY_UNIX) -v
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(TARGET_ARCH) $(GOCMD) build ./...
 
 build-windows:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME).exe -v
+	CGO_ENABLED=0 GOOS=windows GOARCH=$(TARGET_ARCH) $(GOCMD) build ./...
 
 build-mac:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME)_mac -v
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$(TARGET_ARCH) $(GOCMD) build ./...
 
-# Documentation
 docs:
-	@echo "生成文档..."
-	@echo "请查看 docs/ 目录下的文档"
+	@echo "请查看 README.md 和 docs/plugins.md"
 
-# Help
 help:
-	@echo "可用的命令:"
-	@echo "  all          - 构建项目 (默认)"
-	@echo "  build        - 编译项目"
-	@echo "  deps         - 安装依赖"
-	@echo "  fmt          - 格式化代码"
-	@echo "  vet          - 检查代码问题"
-	@echo "  test         - 运行测试"
-	@echo "  test-cover   - 运行测试并生成覆盖率报告"
-	@echo "  clean        - 清理构建产物"
-	@echo "  install      - 安装二进制文件"
-	@echo "  run          - 运行项目"
-	@echo "  build-linux  - 构建Linux版本"
-	@echo "  build-windows - 构建Windows版本"
-	@echo "  build-mac    - 构建Mac版本"
-	@echo "  docs         - 文档信息"
-	@echo "  help         - 显示此帮助信息"
+	@echo "build / run / install: 构建全部包 / 运行 basic 示例 / 安装库"
+	@echo "test / test-race / check: 普通测试 / race / 顺序完整验证"
+	@echo "test-cover / fmt / vet / clean / deps / docs"
+	@echo "build-linux / build-windows / build-mac: 交叉编译校验，TARGET_ARCH 默认 amd64"
 
-.PHONY: all build deps fmt vet test test-cover clean install run build-linux build-windows build-mac docs help
+.PHONY: all build deps fmt vet test test-race check test-cover clean install run build-linux build-windows build-mac docs help

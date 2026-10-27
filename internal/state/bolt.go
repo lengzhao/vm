@@ -155,8 +155,8 @@ func (s *Bolt) Start(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			memory.values[key] = bytes.Clone(v)
-			memory.versions[key] = &revision{}
+			memory.values.set(key, bytes.Clone(v))
+			memory.versions.set(key, &revision{})
 			return nil
 		})
 	})

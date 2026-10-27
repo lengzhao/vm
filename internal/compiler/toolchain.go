@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -107,7 +106,7 @@ func (c *Compiler) resolveToolchain(ctx context.Context) (toolchain, error) {
 	cmd := exec.CommandContext(ctx, binary, "version")
 	cmd.Env = tc.env
 	cmd.WaitDelay = 100 * time.Millisecond
-	var output bytes.Buffer
+	var output diagnosticBuffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	if err := cmd.Run(); err != nil {
