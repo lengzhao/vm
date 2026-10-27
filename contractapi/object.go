@@ -15,18 +15,26 @@ const (
 	MaxObjectValueBytes        = 64 << 10
 	MaxObjectCalls             = 1024
 	MaxObjectReplyBytes        = 1 << 20
+	GasObjectCreate     uint64 = 20
+	GasObjectTransfer   uint64 = 10
+	GasObjectDestroy    uint64 = 10
 	GasObjectGet        uint64 = 5
 	GasObjectSet        uint64 = 10
 	GasObjectDelete     uint64 = 5
 )
 
-// Object is the current contract's default object. Its namespace is bound by
-// the host and cannot be selected by contract code.
-type Object struct{}
+// Object is a handle within the current contract. The host binds its namespace
+// and checks authorization for each owned-object operation.
+type Object struct {
+	id    string
+	owned bool
+}
 
 func DefaultObject() Object { return Object{} }
 
 type ObjectRequest struct {
+	ID      string  `json:"id,omitempty"`
+	Owner   string  `json:"owner,omitempty"`
 	Version int     `json:"version"`
 	Type    string  `json:"type"`
 	Op      string  `json:"op"`
@@ -35,6 +43,7 @@ type ObjectRequest struct {
 	Gas     *uint64 `json:"gas"`
 }
 type ObjectResponse struct {
+	Owner   string `json:"owner,omitempty"`
 	Version int    `json:"version"`
 	OK      *bool  `json:"ok"`
 	Exists  *bool  `json:"exists"`
@@ -59,25 +68,57 @@ func InitObjectIO(reader io.Reader, writer io.Writer) {
 	objectIO.calls = 0
 	objectIO.callFailure = nil
 }
-func (Object) Get(key string) ([]byte, bool, error) {
-	r, err := objectCall("get", key, nil, GasObjectGet)
+func (o Object) Get(key string) ([]byte, bool, error) {
+	r, err := o.call("get", key, nil, "", GasObjectGet)
 	if err != nil {
 		return nil, false, err
 	}
 	return r.Value, *r.Exists, nil
 }
-func (Object) Set(key string, value []byte) error {
-	_, err := objectCall("set", key, value, GasObjectSet)
+func (o Object) Set(key string, value []byte) error {
+	_, err := o.call("set", key, value, "", GasObjectSet)
 	return err
 }
-func (Object) Delete(key string) error {
-	_, err := objectCall("delete", key, nil, GasObjectDelete)
+func (o Object) Delete(key string) error {
+	_, err := o.call("delete", key, nil, "", GasObjectDelete)
 	return err
 }
+
+// OpenObject selects an ID within the current contract; the host checks existence
+// and permissions on every operation. An empty ID is invalid, never DefaultObject.
+func OpenObject(id string) Object {
+	return Object{id: id, owned: true}
+}
+func CreateObject(id string) (Object, error) {
+	o := OpenObject(id)
+	_, e := o.call("create", "", nil, "", GasObjectCreate)
+	return o, e
+}
+func (o Object) Owner() (string, error) {
+	r, e := o.call("owner", "", nil, "", GasObjectGet)
+	return r.Owner, e
+}
+func (o Object) Transfer(owner string) error {
+	_, e := o.call("transfer", "", nil, owner, GasObjectTransfer)
+	return e
+}
+func (o Object) Destroy() error { _, e := o.call("destroy", "", nil, "", GasObjectDestroy); return e }
 func objectCall(op, key string, value []byte, cost uint64) (ObjectResponse, error) {
+	return (Object{}).call(op, key, value, "", cost)
+}
+func (o Object) call(op, key string, value []byte, owner string, cost uint64) (ObjectResponse, error) {
 	objectIO.Lock()
 	defer objectIO.Unlock()
 	var response ObjectResponse
+	if o.owned && (len(o.id) == 0 || len(o.id) > 128 || !utf8.ValidString(o.id)) {
+		return response, fmt.Errorf("invalid object ID")
+	}
+	if (op == "owner" || op == "transfer" || op == "destroy") && o.id == "" {
+		return response, fmt.Errorf("owned object required")
+	}
+	if op == "transfer" && (owner == "" || len(owner) > 256 || !utf8.ValidString(string(owner))) {
+		return response, fmt.Errorf("invalid owner")
+	}
 	if !utf8.ValidString(key) || len(key) > MaxObjectKeyBytes {
 		return response, fmt.Errorf("invalid object field name")
 	}
@@ -93,7 +134,7 @@ func objectCall(op, key string, value []byte, cost uint64) (ObjectResponse, erro
 		return response, fmt.Errorf("object call limit exceeded")
 	}
 	gas := GasUsed()
-	if err := json.NewEncoder(objectIO.writer).Encode(ObjectRequest{Version: ProtocolVersion, Type: "object", Op: op, Key: key, Value: value, Gas: &gas}); err != nil {
+	if err := json.NewEncoder(objectIO.writer).Encode(ObjectRequest{ID: o.id, Owner: owner, Version: ProtocolVersion, Type: "object", Op: op, Key: key, Value: value, Gas: &gas}); err != nil {
 		return response, err
 	}
 	line, err := objectIO.reader.ReadBytes('\n')

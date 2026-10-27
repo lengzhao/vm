@@ -62,3 +62,5 @@ Begin 的 context 约束整个事务；每次读写/提交还检查该操作的 
 ## 可选 E1 持久化后端
 
 `state/bbolt` 提供相同 StateStore/SnapshotStore 能力及独立 Start/Stop 生命周期。未启动或已关闭/故障返回 ErrStateUnavailable。提交边界 I/O 错误有明确的 ErrStateCommitUncertain 异常：磁盘结果可能已提交，Rollback 不承诺撤销；停止实例，重开核对后再重试。除该异常外保留失败提交零发布。完整配置、恢复和耐久性边界见 [持久化状态](persistent_state.md)，不替换默认内存插件。
+
+E3 可选对象服务复用本事务，并将元数据/owner/字段编码为同一保留键，参见 [对象模型](objects.md)。原始状态接口是可信能力，不负责鉴权。

@@ -13,7 +13,8 @@
 - 可选 D3：state/mvcc 按键冲突检测、batch/ordered 有界推测执行与按输入顺序提交；确定性前提见 docs/parallel_execution.md
 - 可选 E1：state/bbolt 同步持久化、重启恢复与 D3 批量组合；提交不确定结果须重开核对
 - 可选 E2：共享独占会话、状态与回执原子提交、同批次身份重放/续跑及持久未完成标记
-- **尚未完成**：多 Object/所有权、链级共识/重组与恢复流程集成、开发者指南
+- 可选 E3：多 Object、所属合约隔离、owner 授权/转移/销毁；根身份认证由宿主负责
+- **尚未完成**：链级共识/重组与恢复流程集成、开发者指南
 
 ## 开发计划
 
@@ -35,7 +36,7 @@
 - [x] ExecuteWithContext / GetLastEvents
 - [x] 默认 Object 存储与执行事务
 - [x] 跨合约 Call 与整链临时 store / Gas
-- [ ] 多 Object / 所有权后置
+- [x] 可选多 Object / owner 授权（E3，首版无共享授权/资产标准）
 
 ### 第六阶段：Gas 模型推进（已完成）
 - [x] 明确入口 / 函数 / 循环计费点基线
@@ -50,7 +51,7 @@
 
 ### 第八阶段：平台能力（后置）
 - [ ] 合约升级
-- [x] 默认 Object 事务的可选有序并行执行（多 Object/所有权仍后置）
+- [x] 默认 Object 事务的可选有序并行执行（可组合 E3 多 Object/owner 服务）
 - [ ] CLI / 部署工具
 - [ ] TinyGo 可选构建器
 
@@ -86,7 +87,7 @@
 
 - [x] E1 可选持久化状态插件：重启恢复、原子落盘、故障边界与生命周期
 - [x] E2 共享独占写入与可恢复批次（单库，不含链共识/重组）
-- [ ] E3 多 Object / 所有权与授权（待设计）
+- [x] E3 可选多 Object / 所属合约隔离与 owner 授权、转移、销毁（不含共享授权/资产标准）
 
 
 ### 第一批验收记录
@@ -251,3 +252,15 @@
 - 最终固定代码后，显式启用Docker的全量普通测试、全量race、go vet、git diff --check均通过，无vm-d1容器残留。本轮没有修改生产或测试超时预算。
 - 配置与文档：presets/recoverable.yaml、docs/recoverable_batches.md、docs/plans/2026-10-26-e2-recoverable-batches.md，并同步插件、持久化、并行和README。元数据为schema v1的隔离扩展；旧E1程序不理解未完成标记，不支持降级写入。单文件/单实例，原始文件与可信插件仍在信任边界内，无授权、分布式锁、链重组或批次自动遗弃能力。
 - E1/E2变更保留当前dev工作区，未提交/推送。下一项E3：多Object与所有权/授权，需要先确认对象模型与权限边界。
+
+
+### 第十四批验收记录：E3 完成（2026-10-27）
+
+- 按用户批准的模型，新增 ObjectService/ObjectSession 与独立 ObjectAuthorizer 窄接口；objects/transactional、objects/owner、engine/objects 为可选插件，默认 Engine、core.Engine/Runner/StateStore 契约保持原样。engine/objects 经 engine/components 取得现有依赖，保留事务执行与 DryRun 能力，可组合有序/恢复调度器。
+- 合约新增 CreateObject/OpenObject 与 Owner/Transfer/Destroy；对象归属绑定实际执行地址，创建 owner 为宿主解析 Sender。所属合约内可读，owner 可写、删字段、转移和销毁；子调用主体为调用合约，不继承根账户。根 Sender 的真实性由嵌入宿主负责，不声称完成签名认证、共享授权或资产标准。
+- 元数据、owner 和字段在同一保留状态键中提交，非 UTF-8 前缀阻断 DefaultObject 访问；同对象冲突会触发重新执行和重新鉴权。销毁保留墓碑，禁止 ID 复用。每对象128字段、编码记录1MiB；ID为1–128字节UTF-8、owner1–256字节，字段/值及每帧调用/回复上限保留。新操作有宿主最低 Gas 校验；帧能力关闭，服务错误锁存。
+- OBJECT_FAILURE 明确区分对象业务拒绝和存储故障：业务拒绝失败本次调用并形成批次失败项，存储/取消/未知基础设施异常仍停止。状态与 owner/墓碑沿用同一事务和持久回执边界；调用树失败、OOG、DryRun 回滚，重启后的中断批次可续跑并重放。
+- 新增9个测试函数（含表驱动与真实严格合约）：覆盖所有权生命周期、合约隔离、默认键隔离、MVCC冲突/回滚、输入副本/取消、字段/记录额度、关闭/损坏记录/缺失Sender、SDK编码和Gas、宿主低报Gas/伪造owner/禁用服务、最小能力包装插件和preset，以及子调用身份、父失败、OOG、DryRun、转移后过期写重执行鉴权、实际bbolt中断前缀/重开续跑/完成重放。独立审查发现合法NUL ID被SDK哨兵排除，先失败测试后改用独立owned标志修复，最终增量复核无明确剩余P1/P2。
+- 最终功能代码固定后，显式启用Docker的全量普通测试、全量race（assembly 227.917秒）、go vet、git diff --check均通过，无vm-d1容器残留；未修改超时预算或增加依赖。
+- 文档与配置：docs/objects.md、presets/objects.yaml、docs/plans/2026-10-27-e3-objects-design.md、docs/plans/2026-10-27-e3-objects.md；同步README、插件、状态与架构。启用/修改权限规则须更新executionID；旧程序或绕过对象服务的插件不能降级写库。原始数据库、状态接口和自定义插件仍属可信能力。无对象枚举、墓碑清理、分布式授权或链级共识/重组。
+- 变更保留当前dev工作区，未提交/推送。E1–E3已完成；后续可收敛设计文档并补开发者指南/API参考。

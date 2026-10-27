@@ -217,7 +217,7 @@ func ReviewRuntimeBoundary(file *ast.File) error {
 		}
 		aliases[name] = true
 	}
-	allowed := map[string]bool{"BlockHeight": true, "BlockTime": true, "Sender": true, "ContractAddress": true, "Log": true, "DefaultObject": true, "Call": true}
+	allowed := map[string]bool{"BlockHeight": true, "BlockTime": true, "Sender": true, "ContractAddress": true, "Log": true, "DefaultObject": true, "CreateObject": true, "OpenObject": true, "Call": true}
 	var boundaryErr error
 	ast.Inspect(file, func(n ast.Node) bool {
 		if boundaryErr != nil {

@@ -223,3 +223,5 @@ go run ./examples/plugins presets/default.yaml
 
 
 可选可恢复批次：`batch/recoverable` + `state/bbolt` 提供共享独占会话、状态与回执原子提交、同 ID 续跑和重放；默认及旧批量接口不变。配置见 [`presets/recoverable.yaml`](presets/recoverable.yaml)，身份、未完成批次与事件去重要求见 [可恢复批次](docs/recoverable_batches.md)。
+
+可选多对象与 owner 授权：见 [对象模型](docs/objects.md) 和 [配置](presets/objects.yaml)；根 Sender 认证由宿主负责。

@@ -203,7 +203,7 @@ func transactionFailure(err error) bool {
 	}
 	if e, ok := err.(*core.ExecutionError); ok {
 		switch e.Code {
-		case core.CodeInvalidRequest, core.CodeInvalidArguments, core.CodeUnknownFunction,
+		case core.CodeObjectFailure, core.CodeInvalidRequest, core.CodeInvalidArguments, core.CodeUnknownFunction,
 			core.CodeContractError, core.CodeContractPanic, core.CodeGasLimitExceeded,
 			core.CodeInvalidResult, core.CodeCallDepth, core.CodeReentrancy:
 			return !fatalCause(e.Cause)

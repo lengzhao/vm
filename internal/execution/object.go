@@ -86,7 +86,13 @@ func (o *objectOutput) handle(line []byte) error {
 	}
 	var cost uint64
 	switch req.Op {
-	case "get":
+	case "create":
+		cost = contractapi.GasObjectCreate
+	case "transfer":
+		cost = contractapi.GasObjectTransfer
+	case "destroy":
+		cost = contractapi.GasObjectDestroy
+	case "owner", "get":
 		cost = contractapi.GasObjectGet
 	case "set":
 		cost = contractapi.GasObjectSet
@@ -105,7 +111,10 @@ func (o *objectOutput) handle(line []byte) error {
 		return reject(core.CodeGasLimitExceeded, fmt.Errorf("object call exceeds gas limit"))
 	}
 	o.gasFloor = *req.Gas
-	if o.store == nil {
+	if req.ID == "" && (req.Owner != "" || (req.Op != "get" && req.Op != "set" && req.Op != "delete")) {
+		return reject(core.CodeInvalidResponse, fmt.Errorf("owned object ID required"))
+	}
+	if o.store == nil && req.ID == "" {
 		return reject(core.CodeStateFailure, fmt.Errorf("object store unavailable"))
 	}
 	if err := interruption(o.ctx); err != nil {
@@ -116,15 +125,29 @@ func (o *objectOutput) handle(line []byte) error {
 	exists := false
 	var value []byte
 	var err error
-	switch req.Op {
-	case "get":
-		value, exists, err = o.store.Get(o.ctx, req.Key)
-	case "set":
-		err = o.store.Set(o.ctx, req.Key, req.Value)
-	case "delete":
-		err = o.store.Delete(o.ctx, req.Key)
+	var owner core.Address
+	if req.ID != "" {
+		objects, ok := core.ObjectsFromContext(o.ctx)
+		if !ok {
+			return reject(core.CodeStateFailure, fmt.Errorf("owned objects unavailable"))
+		}
+		var r core.ObjectReply
+		r, err = objects.Apply(o.ctx, core.ObjectCommand{ID: req.ID, Op: req.Op, Key: req.Key, Value: req.Value, Owner: core.Address(req.Owner)})
+		value, exists, owner = r.Value, r.Exists, r.Owner
+	} else {
+		switch req.Op {
+		case "get":
+			value, exists, err = o.store.Get(o.ctx, req.Key)
+		case "set":
+			err = o.store.Set(o.ctx, req.Key, req.Value)
+		case "delete":
+			err = o.store.Delete(o.ctx, req.Key)
+		}
 	}
 	if err != nil {
+		if business, ok := err.(*core.ExecutionError); ok && business.Code == core.CodeObjectFailure {
+			return reject(core.CodeObjectFailure, err)
+		}
 		return reject(core.CodeStateFailure, err)
 	}
 	if len(value) > core.MaxObjectValueBytes || (!exists && len(value) > 0) {
@@ -136,7 +159,7 @@ func (o *objectOutput) handle(line []byte) error {
 		return err
 	}
 	ok := true
-	payload, err := json.Marshal(contractapi.ObjectResponse{Version: core.ProtocolVersion, OK: &ok, Exists: &exists, Value: value})
+	payload, err := json.Marshal(contractapi.ObjectResponse{Owner: string(owner), Version: core.ProtocolVersion, OK: &ok, Exists: &exists, Value: value})
 	if err != nil {
 		return reject(core.CodeStateFailure, err)
 	}

@@ -212,3 +212,7 @@ WASI 默认不授予文件挂载、socket、宿主时钟/随机源或宿主环�
 `batch/recoverable` 仅依赖 RecoverableBatchStore、TransactionExecutor、ContractReader；配置 workers、maxBatch、executionID（执行规则身份，必填）。`engine/recoverable` 组合 Engine 与 RecoverableBatchExecutor，不扩大 core.Engine 或旧 BatchExecutor。state/bbolt 实现持久化独占会话和原子回执；普通入口同样受会话及未完成批次标记约束。内存后端不支持该能力，装配时拒绝替代。
 
 `state/bbolt` 新增 maxBatchReceiptMB（默认64，范围4–1024）限制每批累计回执，可在重开时调高以恢复额度不足的批次。配置见 `presets/recoverable.yaml`；身份、故障、未完成标记与事件去重见 [可恢复批次](recoverable_batches.md)。
+
+## 可选 E3 对象能力
+
+`objects/owner` 提供 `core.ObjectAuthorizer`；`objects/transactional` 仅依赖该能力并提供 `core.ObjectService`。`engine/objects` 依赖 `components: engine/components` 和 `objects: ObjectService`，提供原有 Engine、TransactionExecutor 和 DryRun 能力，不更改默认图。每帧绑定实际合约与 Sender，元数据及字段使用调用树的同一事务；owner 规则、错误分类、资源限制见 [多对象文档](objects.md)。[objects.yaml](../presets/objects.yaml) 同时演示持久化和可恢复批次组合，修改权限规则时须更新 executionID。

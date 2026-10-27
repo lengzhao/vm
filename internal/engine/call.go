@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/lengzhao/vm/contractapi"
@@ -75,6 +76,19 @@ func (s *callSession) run(ctx context.Context, contract *core.CompiledContract, 
 	}
 	object := state.Bind(s.tx, core.Address(address))
 	ctx = core.WithObjectStore(ctx, object)
+	var objects core.ObjectSession
+	if s.engine.deps.Objects != nil {
+		scope := core.ObjectScope{Contract: core.Address(address)}
+		if cc.Sender != nil {
+			scope.Sender = *cc.Sender
+		}
+		objects = s.engine.deps.Objects.Bind(s.tx, scope)
+		if objects == nil {
+			return nil, s.fail(stateError(fmt.Errorf("object service returned nil session")))
+		}
+		ctx = core.WithObjects(ctx, objects)
+		defer objects.Close()
+	}
 	ctx = core.WithContractCaller(ctx, f)
 	ctx = callcontext.WithCallContext(ctx, cc)
 	ctx = callcontext.WithGasLimit(ctx, f.limit)
@@ -87,6 +101,13 @@ func (s *callSession) run(ctx context.Context, contract *core.CompiledContract, 
 	}
 	if err == nil && object.Err() != nil {
 		err = stateError(object.Err())
+	}
+	if err == nil && objects != nil && objects.Err() != nil {
+		if business, ok := objects.Err().(*core.ExecutionError); ok && business.Code == core.CodeObjectFailure {
+			err = business
+		} else {
+			err = stateError(objects.Err())
+		}
 	}
 	if result == nil {
 		if err == nil {

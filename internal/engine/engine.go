@@ -20,6 +20,7 @@ type Options struct {
 	ExecutionTimeout  time.Duration
 }
 type Deps struct {
+	Objects   core.ObjectService
 	Policy    core.SourcePolicy
 	ABI       core.ABIGenerator
 	Compiler  core.ContractCompiler
@@ -298,4 +299,12 @@ func stateError(err error) error {
 		code = core.CodeTimeout
 	}
 	return &core.ExecutionError{Code: code, Message: err.Error(), Cause: err}
+}
+
+// WithObjects derives a facade with an explicit optional frame service. It does
+// not mutate the original engine or allocate active resources.
+func (e *Engine) WithObjects(objects core.ObjectService) *Engine {
+	clone := *e
+	clone.deps.Objects = objects
+	return &clone
 }
