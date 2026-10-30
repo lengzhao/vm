@@ -1,224 +1,82 @@
-# Gas计费模块详细设计文档
+# Gas 计费详细设计
 
-## 1. 引言
+## 1. 概述
 
-### 1.1 编写目的
-本文档详细描述Gas计费模块的设计与实现，为开发人员提供技术参考。根据架构设计要求，Gas计费模块采用简化实现，只负责基础的Gas计量功能。
+Gas 分两层：
 
-### 1.2 术语定义
-- Gas: 虚拟机执行资源的计量单位
-- Gas Metering: Gas计费
-- Gas Limit: Gas限制
+1. **宿主侧** `GasMetering`：每次调用的独立计量器，由 GasMeterFactory 创建
+2. **合约侧** `contractapi`：统一计数器；编译期注入 `ConsumeGas`；默认库按表扣费
 
-## 2. 概述
+## 2. 宿主接口
 
-### 2.1 功能概述
-Gas计费模块负责Gas的计量和管理，防止合约执行消耗过多系统资源：
-- 跟踪和控制Gas消耗
-- 实施Gas限制检查
-- 超限时终止执行
-
-### 2.2 架构图
-```mermaid
-graph TD
-A[Gas计费模块] --> B[Gas计量器]
-```
-
-## 3. 详细设计
-
-### 3.1 核心数据结构
-
-#### 3.1.1 GasMetering 结构体
 ```go
-type gasMeteringImpl struct {
-    consumedGas uint64
-    gasLimit    uint64
-    mutex       sync.Mutex
-}
-```
-
-### 3.2 核心接口设计
-
-#### 3.2.1 GasMetering 接口
-```go
-// GasMetering Gas计费模块接口（简化版）
 type GasMetering interface {
-    // ConsumeGas 消耗Gas
     ConsumeGas(amount uint64) error
-    
-    // GetConsumedGas 获取已消耗的Gas
     GetConsumedGas() uint64
-    
-    // SetGasLimit 设置Gas限制
     SetGasLimit(limit uint64)
+    GetGasLimit() uint64
+    Reset()
 }
 ```
 
-### 3.3 核心功能实现
+`core.Engine.Execute(ctx, request)` 校验子进程回报的 Gas 并返回本次 ExecuteResult，不保存历史调用状态。根包兼容门面的 ExecuteWithContext/GetGasConsumed 保留最近一次结果语义。
 
-#### 3.3.1 Gas消耗流程
-```mermaid
-graph TD
-A[请求消耗Gas] --> B[检查Gas限制]
-B --> C{是否超限?}
-C --> |是| D[返回错误]
-C --> |否| E[增加消耗量]
-E --> F[更新Gas消耗]
-F --> G[返回成功]
+## 3. 计费点（已实现）
+
+| 计费点 | 消耗 | 实现 |
+|--------|------|------|
+| 入口基础 Gas | 10 | entry：`InitGas` + `ConsumeGas(10)` |
+| 函数入口 | 1 | 编译注入 `__vmConsumeGas(1)`，委托 `contractapi.ConsumeGas` |
+| `for` / `range` 每次迭代 | 1 | 同上 |
+| BlockHeight / BlockTime / Sender / ContractAddress | 1 | `contractapi` 内部 |
+| Log | 2 | `contractapi` 内部 |
+
+超限时合约进程 panic，`ok=false`，Runner 返回错误。
+
+默认 Object、多对象生命周期和 Call 已计费，价格及画像限制见 [Gas 规范](../gas_metering.md)。
+
+## 4. GasProfile 与 EstimateGas（已实现）
+
+### 4.1 GasProfile
+
+Compile 扫描原始源码生成；Deploy 写入 `gas_profile.json`。
+
+```json
+{
+  "version": 1,
+  "entry_gas": 10,
+  "functions": {
+    "Add": { "func_entries": 1, "loop_sites": 0, "api_calls": {} }
+  }
+}
 ```
 
-## 4. 模块实现
-
-### 4.1 模块初始化
-Gas计费模块在初始化时创建实例：
+### 4.2 EstimateGas
 
 ```go
-// NewGasMetering 创建新的Gas计费实例
-func NewGasMetering() GasMetering {
-    return &gasMeteringImpl{
-        consumedGas: 0,
-        gasLimit:    10000000, // 默认Gas限制
-    }
-}
+func (vm *VMEngine) EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)
 ```
 
-### 4.2 简化实现
-根据架构设计要求，Gas计费模块采用简化的实现方式：
+- **静态（默认）**：读 Profile，按约定公式启发式估算（非严格上界）；`Mode = "static"`
+- **DryRun**：真执行取 `GasConsumed`；`Mode = "dry_run"`
+- 无 Profile / 未知函数 → error
+- `opts == nil` → 静态 + 默认 LoopBound(1000)
 
-```go
-// ConsumeGas 消耗Gas
-func (g *gasMeteringImpl) ConsumeGas(amount uint64) error {
-    g.mutex.Lock()
-    defer g.mutex.Unlock()
-    
-    // 检查是否超限
-    if g.consumedGas+amount > g.gasLimit {
-        return fmt.Errorf("gas limit exceeded: consumed %d, limit %d", g.consumedGas+amount, g.gasLimit)
-    }
-    
-    // 增加消耗量
-    g.consumedGas += amount
-    return nil
-}
+静态公式：
 
-// GetConsumedGas 获取已消耗的Gas
-func (g *gasMeteringImpl) GetConsumedGas() uint64 {
-    g.mutex.Lock()
-    defer g.mutex.Unlock()
-    
-    return g.consumedGas
-}
-
-// SetGasLimit 设置Gas限制
-func (g *gasMeteringImpl) SetGasLimit(limit uint64) {
-    g.mutex.Lock()
-    defer g.mutex.Unlock()
-    
-    g.gasLimit = limit
-}
+```text
+Estimated = entry_gas + func_entries*1 + loop_sites*LoopBound + Σ(api_calls * GasTable)
 ```
 
-## 5. 安全设计
+### 4.3 基准测试
 
-### 5.1 Gas计费
-通过Gas计费模块防止合约执行消耗过多系统资源：
-- 跟踪和控制Gas消耗
-- 实施Gas限制检查
-- 超限时终止执行
+- `BenchmarkExecuteAdd`
+- `BenchmarkExecuteLoop`
+- `BenchmarkEstimateGasStatic`
 
-## 6. 性能优化
+## 5. 明确未实现 / 后置
 
-### 6.1 线程安全
-Gas计费模块实现线程安全：
-- 使用互斥锁保护共享数据
-- 确保并发环境下的数据一致性
-
-## 7. 错误处理
-
-### 7.1 错误分类
-- Gas超限错误
-- 系统错误
-
-### 7.2 错误码设计
-```go
-const (
-    // Gas相关错误
-    ErrGasExceeded = 3002
-    
-    // 系统相关错误
-    ErrSystemError = 5001
-)
-```
-
-### 7.3 错误信息结构
-```go
-type GasError struct {
-    Code     int
-    Message  string
-    Details  string
-    Err      error
-}
-```
-
-## 8. 测试设计
-
-### 8.1 单元测试
-为Gas计费模块编写单元测试：
-- Gas消耗功能测试
-- Gas限制测试
-- 错误处理测试
-
-### 8.2 集成测试
-编写集成测试验证Gas计费与其他模块的协作：
-- 完整合约Gas计费流程测试
-- 超限处理测试
-- 异常处理测试
-
-## 9. 部署与运维
-
-### 9.1 配置管理
-```yaml
-gas:
-  max_gas_limit: 10000000
-```
-
-### 9.2 监控指标
-- Gas消耗情况
-- Gas超限次数
-- 平均Gas消耗
-
-### 9.3 日志设计
-```go
-type GasLogger struct {
-    // 日志级别
-    Level LogLevel
-    
-    // 日志输出
-    Output io.Writer
-    
-    // 是否启用详细日志
-    Verbose bool
-}
-```
-
-## 10. 与其他模块的交互
-
-### 10.1 与虚拟机引擎的交互
-Gas计费模块被虚拟机引擎调用进行Gas管理：
-- 设置Gas限制
-- 消耗Gas
-- 查询Gas消耗情况
-
-## 11. 附录
-
-### 11.1 接口依赖关系
-```mermaid
-graph TD
-A[GasMetering] --> B[无外部依赖]
-```
-
-### 11.2 配置示例
-```go
-// DefaultGasLimit 默认Gas限制
-const DefaultGasLimit = 10000000
-```
+- 按代码行计费
+- 路径敏感 / 精确迭代次数推断的 EstimateGas
+- 资产余额/转账 Gas（当前没有对应账户 API）
+状态回滚、持久化及恢复批次已实现；DryRun 执行后回滚且不发布事件。

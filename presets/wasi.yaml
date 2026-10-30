@@ -1,0 +1,55 @@
+# Standard Go WASI compiler + wazero execution. No ambient host filesystem/network.
+# Compilation is local by default; compiler.sandbox can enable Docker build isolation.
+root: engine
+plugins:
+  state:
+    use: state/memory
+  security:
+    use: security/go
+  abi:
+    use: abi/go
+  policy:
+    use: policy/go
+    config: {enableSecurity: true, deterministic: true}
+    deps: {reviewer: security}
+  validator:
+    use: policy/artifact
+    config: {targetOS: wasip1, targetArch: wasm, requireDeterminism: true}
+    deps: {policy: policy}
+  deployer:
+    use: deployment/default
+    deps: {store: contracts, validator: validator}
+  injector:
+    use: gas/injector
+  profiler:
+    use: gas/profiler
+  meters:
+    use: gas/meters
+  compiler:
+    use: compiler/wasip1
+    config: {outputDir: ./contracts-wasi, buildTimeout: 30s, requireDeterminism: true}
+    deps: {policy: policy, abi: abi, injector: injector, profiler: profiler}
+  contracts:
+    use: storage/filesystem
+    config: {directory: ./contracts-wasi}
+  runner:
+    use: runner/wazero
+    config: {timeout: 30s, memoryMB: 256, maxModuleMB: 64, engine: compiler}
+  engine:
+    use: engine/default
+    config:
+      executionTimeout: 30s
+      enableGasMetering: true
+      maxGasLimit: 1000000
+      maxCallDepth: 8
+    deps:
+      state: state
+      policy: policy
+      abi: abi
+      compiler: compiler
+      contracts: contracts
+      runner: runner
+      meters: meters
+      estimator: profiler
+      deployer: deployer
+      validator: validator

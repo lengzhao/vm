@@ -34,10 +34,18 @@
 
 合约只能导入以下指定的安全库：
 
+- `fmt`: 格式化输出（当前允许）
 - `strconv`: 字符串转换
 - `math`: 数学计算
+- `time`: 时间处理
 - `errors`: 错误处理
-- `github.com/lengzhao/vm`: 项目默认库，提供与区块链环境交互的接口
+- `github.com/lengzhao/vm/contractapi`: 合约侧默认库（链上下文与 Log）
+
+**禁止**导入宿主根包 `github.com/lengzhao/vm`（避免合约依赖宿主实现细节）。
+
+禁止危险构造（AST 检查）：`unsafe`、`go`、`select`、`chan`、`goto`、`map`、`cap`。
+禁止包级可变全局变量；`const` 允许。
+合约源码不得包含 `main`（由编译器生成入口）。
 
 ## 5. 默认函数白名单
 
@@ -66,3 +74,7 @@
 1. 标记合约发布失败
 2. 返回详细的错误信息，包括违反的安全规则
 3. 阻止合约进入编译和执行阶段
+
+## 可选确定性 profile
+
+`RequireDeterminism` 对本规范的开发模式白名单进一步收紧，启用时即使 EnableSecurityChecks=false 也不会跳过安全审查。开发模式仍可使用 time/fmt；确定性模式拒绝这些包，并限制数值、指针与标准库符号。参见 [确定性源码策略](deterministic_execution.md)。

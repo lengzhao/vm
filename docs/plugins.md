@@ -1,0 +1,225 @@
+# PluginKit 插件架构
+
+VM 使用 `github.com/lengzhao/pluginkit v0.1.6`，与 agentkit / GoChainKit 采用相同的 `Register + Config/Deps + build.Build` 模式。宿主项目需要 Go 1.26.1；编译出的合约仍只依赖独立的 `contractapi`，不会带入 PluginKit。
+
+## 分层与能力
+
+- `core/`：公共数据类型、能力接口、稳定协议错误和调用上下文。
+- `internal/{compiler,security,policy,gas,abigen,storage,state,deployment,process,engine}/`：按职责隔离的内建实现，只依赖公共契约和必要的公共实现工具。
+- `internal/callcontext/`：调用上下文解析与传递；`internal/compat/`：旧 API 适配。
+- `internal/builtin/`：历史白盒回归测试，不进入生产插件装配路径。
+- `plugins/`：每种能力的 Config/Deps 构造与注册；第三方插件只需实现 core 接口。
+- `assembly/`：配置读取、默认图、PluginKit 构建和实例生命周期。
+- 根 `vm` 包：现有 API 的兼容入口，默认使用插件图。
+
+插件种类：
+
+| use | 能力 | deps |
+| --- | --- | --- |
+| `security/go` | AST 安全审查 | 无 |
+| `abi/go` | ABI 生成 | 无 |
+| `policy/go` | 开发/确定性源码策略 | reviewer |
+| `policy/artifact` | 产物策略身份与保证校验 | policy |
+| `gas/injector` | Gas 插桩 | 无 |
+| `gas/profiler` | 静态画像与估算 | 无 |
+| `gas/meters` | 每次调用的计量器工厂 | 无 |
+| `compiler/go` | 独立进程 Go 编译 | policy, abi, injector, profiler |
+| `storage/filesystem` | 合约产物 Put/Get 存储 | 无 |
+| `state/memory` | 状态快照事务、读写集合、原子提交/回滚 | 无 |
+| `deployment/default` | 部署规则与地址分配 | store, validator |
+| `runner/process` | 子进程执行 | 无 |
+| `engine/default` | VM 编排 | policy, abi, compiler, deployer, contracts, runner, meters, estimator, validator, state |
+| `engine/components` | 兼容程序化 Runner 注入的依赖束 | 同上 |
+
+Host、CallContext、事件和单次调用的 Gas 计量器是每次调用的数据/实例；不注册成共享的全局插件。`gas/meters` 必须每次返回一个独立计量器。
+
+## 使用配置
+
+```go
+import (
+    "context"
+    "os"
+    "github.com/lengzhao/vm/assembly"
+    "github.com/lengzhao/vm/core"
+    _ "github.com/lengzhao/vm/plugins/all"
+)
+
+file, err := os.Open("presets/default.yaml")
+if err != nil { return err }
+defer file.Close()
+ctx := context.Background()
+rt, err := assembly.Load(ctx, file)
+if err != nil { return err }
+defer rt.Stop(context.Background())
+compiled, err := rt.Engine.Compile(ctx, source)
+if err != nil { return err }
+address, err := rt.Engine.Deploy(ctx, core.DeploymentRequest{
+    Contract: compiled,
+    Input: core.DeploymentInput{ChainID: "chain-A", Sender: "alice", Nonce: 1},
+})
+if err != nil { return err }
+result, err := rt.Engine.Execute(ctx, core.ExecutionRequest{
+    Address: address, Function: "Add", Args: []any{2, 3},
+})
+if err != nil { return err }
+_ = result.Data // ExecuteResult 同时包含 Events 和 GasConsumed
+```
+
+运行 `go run ./examples/plugins presets/default.yaml`，输出 `5`。
+
+`assembly` 本身不会隐式导入全部插件。可导入 `plugins/all`，或仅导入所需插件包及第三方扩展。根 `vm` 包为兼容旧构造函数会注册内建插件。
+
+YAML 使用 `root/plugins` 和 `use/config/deps`，详见 [默认预设](../presets/default.yaml)。依赖引用实例 ID；同一实例被多个模块引用时由 PluginKit 共享。也支持 PluginKit 的内联依赖对象。配置只允许一个文档，最大 1 MiB；未知顶层和插件 Config 字段会报错。
+
+Go 中可编辑默认图：
+
+```go
+cfg := assembly.DefaultConfig(core.VMConfig{
+    ContractStorageDir: "./contracts",
+    EnableSecurityChecks: true,
+})
+cfg.Plugins["runner"] = map[string]any{"use": "my/runner"}
+rt, err := assembly.Build(ctx, cfg)
+```
+
+`DefaultConfig` 保留传入布尔值，包括显式 false；安全、确定性和 Gas 不会被悄悄开启。预设文件则显式开启安全审查与 Gas。超时配置使用 `30s` 等 Go duration 字符串。
+
+## Go 编译工具链
+
+`compiler/go` 可配置 `goBinary`（Go 可执行文件路径或命令名）与 `goVersion`（完整版本，例如 `go1.26.1`）。默认从 PATH 解析 `go`，版本必须与构建 VM 的 Go 版本完全一致。每次 Compile 在缓存查找前探测实际版本和宿主平台，不匹配直接失败；源码处理、探测和构建共用从 Compile 入口开始的 `buildTimeout` 预算及调用方取消信号。插件工厂不启动工具链进程。`maxSourceBytes` 默认 1 MiB，正数可调整，负数拒绝；超限源码在审查/AST 解析前拒绝。本地工具链诊断最多保留 64 KiB 前缀并标记截断，后续输出继续排空。同步自定义插件和单次解析不能被 context 强制抢占，阶段之间观察取消；这些限制不等于编译器 CPU/内存沙箱。
+
+```yaml
+compiler:
+  use: compiler/go
+  config:
+    goBinary: /opt/go/bin/go
+    goVersion: go1.26.1
+    buildTimeout: 30s
+    maxSourceBytes: 1048576
+  deps:
+    policy: policy
+    abi: abi
+    injector: injector
+    profiler: profiler
+```
+
+此配置片段放在 `plugins` 下。编译禁用 CGO 和自动下载工具链，固定宿主 GOOS/GOARCH；忽略外部 GOROOT、GOFLAGS、GOEXPERIMENT、GOWORK、持久化 GOENV 和架构调优变量。构建与版本探测复用同一个绝对可执行路径；缓存身份包含实际版本、平台及流水线版本。开发模式同样使用这些构建约束，自定义源码策略不改变它们。
+
+B3 已实现版本化产物清单及完整性校验：记录实际工具链与 runtime/Gas 规则，校验缓存、部署、加载与执行的内容摘要。完整格式与插件职责见 [产物清单](artifact_manifest.md)。工具链与产物生产者仍须受信任；来源认证后置。
+
+## 注册第三方插件
+
+```go
+package myrunner
+
+import (
+    "github.com/lengzhao/pluginkit"
+    "github.com/lengzhao/vm/core"
+)
+
+type Config struct { Endpoint string `json:"endpoint"` }
+type Deps struct { /* 按需声明 core 接口，以 json tag 命名 */ }
+
+func New(cfg Config, deps Deps) (core.Runner, error) {
+    return newRunner(cfg.Endpoint), nil // newRunner 是自定义实现
+}
+func init() { pluginkit.Register("my/runner", New) }
+```
+
+构造函数返回 `(T, error)`，通过 Deps 字段声明依赖，禁止在编译/执行路径中另建默认依赖。无需修改 VM 源码或维护第二套注册中心。
+
+自定义源码策略只需实现 `Review(string) error` 和稳定、非空的 `ID() string`；改变语义时升级 ID。可选实现 `PolicyGuarantor.Guarantees() PolicyGuarantees`，由 `core.GuaranteesOf` 读取执行保证。确定性要求通过 `Deterministic` 保证检查，不绑定内置策略 ID。策略是受信任扩展点，声明本身不是确定性的证明。
+
+`policy/artifact` 只校验产物接受规则：默认接受当前源码策略 ID；`acceptedPolicies` 可显式指定其他 ID；源码策略声明确定性或配置 `requireDeterminism` 时，产物必须包含确定性保证。`allowAnyPolicy` 只允许非确定性的内置开发模式，用于旧 API 兼容。部署与执行分别调用该校验器，存储不承担部署策略。
+
+核心契约按消费者收窄：
+
+- `ContractCompiler` 仅有 `Compile(context.Context, string)`；审查和 Gas 注入分别由 `SourcePolicy`、`GasInjector` 提供。
+- `SecurityReviewer` 仅有 `Review(string) error`，白名单查询是具体实现的辅助方法。
+- `ContractStore` 组合 `Put(ctx, address, artifact)` 与 `Get(ctx, address)`；独立 `ContractCreator.Create` 提供只创建及相同身份幂等重试，默认部署器只依赖 Creator。文件存储实现这三种窄能力，存储不修改调用方产物。
+- `ContractDeployer.Deploy(ctx, DeploymentRequest)` 使用显式 ChainID/Sender/Nonce/Salt 和清单摘要派生地址，持久化部署记录；完整规则与兼容入口见 [确定性部署](deployment.md)。
+- `Engine` 仅组合编译、部署、读取、执行、ABI 和估算等业务能力。`Execute(ctx, ExecutionRequest)` 返回自包含 `ExecuteResult`，不要求最近结果查询或生命周期方法。
+- 编译器依赖 `GasProfileBuilder`，引擎依赖 `GasEstimator`；同一个 `GasProfiler` 插件同时实现两者，以保证画像和估算模型配对。内建估算器严格拒绝画像版本不为 1 的输入。
+
+编译缓存同时考虑原始源码、策略 ID、实际 Gas 注入代码、生成入口和编译流水线版本，更换注入/ABI 行为不会误用旧二进制。存储与执行继续校验既有协议和 ABI 版本。
+
+## 生命周期与错误
+
+构造函数必须保持无活动资源：连接、goroutine 等放到可选的 `Start(context.Context) error` 中。PluginKit v0.1.6 构造失败不会返回部分构建结果，因此构造函数自身必须清理失败时获取的资源。
+
+完整图构建后，assembly 按依赖顺序调用 Start；启动失败或上下文取消时，用独立的清理上下文逆序回滚已尝试启动的实例，包括当前启动失败的实例，不调用后续未启动实例的 Stop。插件应能安全清理部分启动状态。正常通过 `rt.Stop(ctx)` 逆序停止全部实例，包括运行中懒加载资源的 Stop-only 插件；成功停止的实例不会重复释放。取消或超时导致未完成的停止可换新上下文重试，其余错误聚合返回。`core.Engine` 不定义 Stop；可选 `Stop(context.Context) error` 由 assembly 统一处理。根包兼容门面保留 `Stop() error`，委托整个 Runtime 停止。
+
+配置/构建错误直接返回给调用方；缺失依赖、循环、类型不匹配、未知插件由 PluginKit 检查。ProcessRunner 延续现有进程隔离边界，并不提供 OS 沙箱。
+
+## 原有 API
+
+`vm.NewVMEngine`、`NewVMEngineWithRunner`、独立编译器等入口保留。新增 `vm.OpenVMEngine(ctx, config)` 返回 `(*VMEngine, error)`，适合显式处理初始化错误。旧构造函数没有 error 返回值，装配失败时会 panic；原先忽略存储创建失败的行为已改为尽早报告。
+
+原有公共数据类型保持 core 类型身份；旧方法和具体实现通过根包及 `internal/compat` 适配。旧 `EstimateFromProfile` helper 会复制并把版本 0 适配为 1，新 core 估算契约严格检查版本。历史白盒测试保留在 `internal/builtin`，根包另有兼容入口测试。
+
+文件存储的 `Put` 按完整记录替换：先在临时目录写入快照，再在实例锁保护下发布；同地址覆盖会清除旧的可执行文件和可选 Gas 画像。发布失败时恢复旧记录；恢复本身失败时保留旧记录备份并返回其位置。共享目录的多个 Store 实例或多个进程之间不提供事务协调。
+
+## 状态事务
+
+`core.StateStore` 仅提供 Begin；事务提供 Get/Set/Delete、ReadSet/WriteSet、Commit/Rollback。`state/memory` 可独立构建或被宿主插件按契约引用，C2 已作为默认 Engine 图的 state 依赖。快照隔离、全局版本提交冲突、取消与副本语义见 [状态事务](state_transactions.md)。默认 Object、失败/DryRun 回滚和事件提交语义见 [Object 与执行](object_runtime.md)。
+
+## 跨合约调用
+
+`ContractCaller` 与 ObjectStore 是每帧的作用域能力，由 Engine 注入 Runner context。所有帧共享根事务作为临时 store，仅最外层成功才发布；不新增状态后端的保存点或补偿接口。`engine/default` 的 `maxCallDepth` 默认 8、可配置 1–32。Call 的消息、Gas、事件及版本见 [跨合约调用](cross_contract.md)。
+
+
+## Docker 编译与执行沙箱（D1）
+
+完整可编辑配置见 [`presets/docker.yaml`](../presets/docker.yaml)，运行边界和验收命令见 [沙箱指南](sandbox_roadmap.md)。`plugins/all` 已注册 `runner/docker`；工厂只验证配置，不启动容器。
+
+- `compiler/go.config.sandbox`：可选对象，包含 `image`（必填本地 `sha256:<64位小写十六进制>` 镜像 ID）、`binary`（Docker CLI，默认 `docker`）、`memoryMB`、`cpus`（整数核配额）、`pids`、`tmpMB`。资源值为 0 使用默认值，负数拒绝。编译默认 1024 MiB / 1 CPU / 256 PID / 512 MiB tmpfs，默认超时 2 分钟。`goVersion` 必须匹配镜像内实际 `/usr/local/go/bin/go version`；沙箱不使用 `goBinary`。
+- `runner/docker.config`：`timeout` 和必填 `sandbox`，字段同上；默认 30 秒、256 MiB / 1 CPU / 128 PID / 64 MiB tmpfs。CPU 是调度配额，累计运行时间由 timeout 限制。
+- `policy/artifact.config.targetOS`：Docker 配置为 `linux`；`targetArch` 默认本机架构且只支持本机架构。默认校验仍为本机平台。Runner 独立检查 Linux 目标，ProcessRunner 独立检查本机目标，错误装配不会回退执行。
+
+core 的 Compiler、Runner、Engine、StateStore 能力接口未扩大。产物工具链可选字段 `container_image` 记录编译镜像 ID，并参与缓存及清单摘要；它是构建身份，不是可信来源认证或沙箱执行证明。编译镜像与执行镜像可以不同，但必须均为受信任且匹配 Linux/架构的不可变镜像。
+
+## WASI 编译与 wazero 执行插件（D2）
+
+完整配置见 [`presets/wasi.yaml`](../presets/wasi.yaml)。`compiler/wasip1` 与 `compiler/go` 具有相同 Config/Deps，各自选择固定目标：前者为 `wasip1/wasm`，后者维持宿主平台或 Docker Linux/宿主架构。编译产物和缓存包含实际目标，不能互换；`compiler/wasip1.config.sandbox` 可组合 D1 Docker 构建隔离，Go 镜像、版本及资源参数规则不变。默认 WASI 编译仍在宿主运行，不应误认为已经隔离编译器。
+
+`runner/wazero` 配置：`timeout` 默认 30s；`memoryMB` 默认 256，正整数上限 4096，表示 Wasm 线性内存上限；`maxModuleMB` 默认 64，正整数上限 256，限制读入模块的字节数；`engine` 可选 `compiler`、`interpreter` 或空（wazero 按平台选择）。0 使用资源默认值，负数拒绝。工厂不创建活动 runtime，每次调用独立实例，所有执行都开启 `WithCloseOnContextDone`，支持终止未插桩的 Wasm 死循环。编译代码通过 [wazero CompilationCache](https://pkg.go.dev/github.com/tetratelabs/wazero@v1.12.0#CompilationCache) 按已重新校验的二进制摘要复用，同一 Runner 的配置固定；同代编译串行，执行仍可并发。每个 Runner 最多保留最近一个产物的闲置编译缓存，切换产物时淘汰旧代；旧代如有活跃帧，仅保留至最后一个 runtime 关闭。此数量上限不包含活跃请求，也不是编译代码的字节配额，线性内存限制不涵盖 JIT 代码。Runner 的可选 `Stop(ctx)` 拒绝新请求，等待活跃帧退出后释放代码；超时可重试。直接使用 Runner 的调用方也须关闭它。单次 timeout 包含产物校验、模块编译/实例化、执行和嵌套子调用，父帧预算不会因进入子帧重新开始。
+
+`policy/artifact` 对 WASI 图显式配置 `targetOS: wasip1`、`targetArch: wasm`；源码策略、确定性保证及 runtime/Gas 版本校验仍生效。Runner 自身也验证目标，不能绕过错误组合。现有 core Compiler/Runner/Engine 契约未增加 Wasm 专用方法；其它编译器和 Runner 继续独立可选。
+
+三类 Runner 共用 `internal/execution.Session` 的 JSON/Host/Gas/回复预算和结果分类。WASI 的初始请求和同步 Host 回复使用调用私有的内存队列，不经阻塞 stdin 管道；进程路径继续使用可取消管道。不能将私有队列用于并发多线程 guest，当前 Go WASI 为单线程执行模型。
+
+WASI 默认不授予文件挂载、socket、宿主时钟/随机源或宿主环境变量，只提供显式 VM 上下文。Wasm 内存上限不包含 wazero JIT、模块验证、Go 宿主分配或整链多个帧的总内存；`timeout` 也不是 JIT/验证阶段的硬实时抢占，宿主回调必须合作取消。该插件提供 Wasm 隔离原型，不能把它的线性内存上限当作 D1 的 OS 进程内存配额。生产建议及实测见 [后端比较](backend_comparison.md)。
+
+
+## D3：MVCC 与有序并行批量插件
+
+- `state/mvcc` 同时提供 `core.StateStore` 与 `core.SnapshotStore`；`state/memory` 仍只需最小 Begin 接口。SnapshotTransaction 额外支持只验证不发布的 Validate，Commit 对读写访问集合原子校验。
+- `engine/default` 具体实现额外提供 `core.TransactionExecutor`，执行调用方事务但不提交/回滚；原 `core.Engine` 不增加方法。
+- `batch/ordered` 的依赖仅为 `state: SnapshotStore` 和 `executor: TransactionExecutor`。配置 workers（默认 4，1–64）、maxBatch（默认 1024，1–65536），0 取默认。工厂不获取活动资源，不强制具体状态或 Runner 实现。
+- `engine/batched` 将独立 Engine 与 BatchExecutor 组合供 assembly 根节点使用，不接管它们的生命周期；明确配置同一 Engine / State 实例，避免业务状态分叉。原默认图不变。
+
+完整配置见 `presets/parallel.yaml`，算法、业务/基础设施错误分类、已提交前缀与确定性前提见 [有序并行执行](parallel_execution.md)。必须无外部并发写入或产物替换，不将资源故障称为确定性交易结果；不提供整批原子回滚。
+
+
+## E1：持久化状态插件
+
+`state/bbolt` 提供 StateStore、SnapshotStore 和 Start(ctx)/Stop(ctx)，配置 path（必填，父目录需存在）、lockTimeout（默认 1s，显式须为正 duration）。工厂不获取资源；assembly 启动后独占文件，Stop 取消旧快照并关闭；原实例关闭后不重启。默认 state/memory、state/mvcc 不变。完整示例 `presets/persistent.yaml` 可直接组合 D3 批量能力，无 Engine/Runner 接口变更。
+
+持久化 I/O 存在 ErrStateCommitUncertain 显式异常：结果可能已经落盘，后端故障隔离，必须新实例重开核对后再重试。批量返回的前缀不包含不确定项但不能据此断言它已回滚；详见 [持久化状态](persistent_state.md)。
+
+
+## E2：可恢复批次
+
+`batch/recoverable` 仅依赖 RecoverableBatchStore、TransactionExecutor、ContractReader；配置 workers、maxBatch、executionID（执行规则身份，必填）。`engine/recoverable` 组合 Engine 与 RecoverableBatchExecutor，不扩大 core.Engine 或旧 BatchExecutor。state/bbolt 实现持久化独占会话和原子回执；普通入口同样受会话及未完成批次标记约束。内存后端不支持该能力，装配时拒绝替代。
+
+`state/bbolt` 新增 maxBatchReceiptMB（默认64，范围4–1024）限制每批累计回执，可在重开时调高以恢复额度不足的批次。配置见 `presets/recoverable.yaml`；身份、故障、未完成标记与事件去重见 [可恢复批次](recoverable_batches.md)。
+
+## 可选 E3 对象能力
+
+`objects/owner` 提供 `core.ObjectAuthorizer`；`objects/transactional` 仅依赖该能力并提供 `core.ObjectService`。`engine/objects` 依赖 `components: engine/components` 和 `objects: ObjectService`，提供原有 Engine、TransactionExecutor 和 DryRun 能力，不更改默认图。每帧绑定实际合约与 Sender，元数据及字段使用调用树的同一事务；owner 规则、错误分类、资源限制见 [多对象文档](objects.md)。[objects.yaml](../presets/objects.yaml) 同时演示持久化和可恢复批次组合，修改权限规则时须更新 executionID。
+
+## 可选持久化维护能力
+
+`state/bbolt` 额外提供 `core.StateBackupper`（`Backup(ctx, io.Writer)`）和 `core.StateInspector`（`StateStats(ctx)`），不扩大 StateStore/Engine。通过 Runtime.Result.Instances 获取 state 实例并断言相应能力；备份包含状态、回执及 pending fence，Writer 不能重入 store。维护与提交/关闭串行，context 不强制中断任意 I/O。CLI 和指标解释见 [运维指南](operations.md)。
+
+组合严格策略、持久化恢复、对象 owner 和 Docker 编译/运行的模板见 [objects-docker.yaml](../presets/objects-docker.yaml)，真实业务流程见 [integration](../examples/integration/main.go)。镜像和版本占位符必须先替换；这些模板不提供宿主身份认证或外部事件可靠投递。

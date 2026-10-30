@@ -1,0 +1,62 @@
+# Ordered parallel prototype for deterministic trusted contracts.
+# Exclusive state writer required during each batch; ProcessRunner is not an OS sandbox.
+root: app
+plugins:
+  state:
+    use: state/mvcc
+  security:
+    use: security/go
+  abi:
+    use: abi/go
+  policy:
+    use: policy/go
+    config: {enableSecurity: true, deterministic: true}
+    deps: {reviewer: security}
+  validator:
+    use: policy/artifact
+    config: {requireDeterminism: true}
+    deps: {policy: policy}
+  deployer:
+    use: deployment/default
+    deps: {store: contracts, validator: validator}
+  injector:
+    use: gas/injector
+  profiler:
+    use: gas/profiler
+  meters:
+    use: gas/meters
+  compiler:
+    use: compiler/go
+    config: {outputDir: ./contracts, buildTimeout: 30s, requireDeterminism: true}
+    deps: {policy: policy, abi: abi, injector: injector, profiler: profiler}
+  contracts:
+    use: storage/filesystem
+    config: {directory: ./contracts}
+  runner:
+    use: runner/process
+    config: {timeout: 30s}
+  engine:
+    use: engine/default
+    config:
+      executionTimeout: 30s
+      enableGasMetering: true
+      maxGasLimit: 1000000
+      maxCallDepth: 8
+    deps:
+      state: state
+      policy: policy
+      abi: abi
+      compiler: compiler
+      contracts: contracts
+      runner: runner
+      meters: meters
+      estimator: profiler
+      deployer: deployer
+      validator: validator
+  batch:
+    use: batch/ordered
+    config: {workers: 4, maxBatch: 1024}
+    deps: {state: state, executor: engine}
+  app:
+    use: engine/batched
+    deps: {engine: engine, batch: batch}

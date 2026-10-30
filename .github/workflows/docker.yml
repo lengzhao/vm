@@ -1,0 +1,46 @@
+name: Docker isolation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare trusted Go image and freeze local identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^go //p' go.mod)
+          image="golang:${version}-alpine"
+          docker pull "$image"
+          image_id=$(docker image inspect "$image" --format '{{.Id}}')
+          go_version=$(docker run --rm --network none --entrypoint /usr/local/go/bin/go "$image_id" version | awk '{print $3}')
+          test "$go_version" = "go${version}"
+          echo "VM_DOCKER_IMAGE=$image_id" >> "$GITHUB_ENV"
+          echo "VM_DOCKER_GO_VERSION=$go_version" >> "$GITHUB_ENV"
+      - name: Real Docker isolation and transaction tests
+        run: go test -count=1 -p 1 -timeout 5m ./internal/sandbox ./assembly ./examples/integration
+      - name: Real Docker isolation and transaction tests with race detector
+        run: go test -race -count=1 -p 1 -timeout 5m ./internal/sandbox ./assembly ./examples/integration
+      - name: Check for leaked VM containers
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          remaining=$(docker ps -aq --filter 'name=vm-d1-')
+          if [ -n "$remaining" ]; then
+            docker ps -a --filter 'name=vm-d1-'
+            exit 1
+          fi

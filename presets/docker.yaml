@@ -1,0 +1,73 @@
+# Docker sandbox preset. Replace both IMAGE_ID values with a trusted local
+# immutable sha256 image ID and GO_VERSION with its actual Go version.
+# No images are pulled and there is no host-execution fallback.
+root: engine
+plugins:
+  state:
+    use: state/memory
+  security:
+    use: security/go
+  abi:
+    use: abi/go
+  policy:
+    use: policy/go
+    config: {enableSecurity: true, deterministic: false}
+    deps: {reviewer: security}
+  validator:
+    use: policy/artifact
+    config: {targetOS: linux}
+    deps: {policy: policy}
+  deployer:
+    use: deployment/default
+    deps: {store: contracts, validator: validator}
+  injector:
+    use: gas/injector
+  profiler:
+    use: gas/profiler
+  meters:
+    use: gas/meters
+  compiler:
+    use: compiler/go
+    config:
+      outputDir: ./contracts-docker
+      buildTimeout: 2m
+      goVersion: GO_VERSION
+      requireDeterminism: false
+      sandbox:
+        image: IMAGE_ID
+        memoryMB: 1024
+        cpus: 1
+        pids: 256
+        tmpMB: 512
+    deps: {policy: policy, abi: abi, injector: injector, profiler: profiler}
+  contracts:
+    use: storage/filesystem
+    config: {directory: ./contracts-docker}
+  runner:
+    use: runner/docker
+    config:
+      timeout: 30s
+      sandbox:
+        image: IMAGE_ID
+        memoryMB: 256
+        cpus: 1
+        pids: 128
+        tmpMB: 64
+  engine:
+    use: engine/default
+    config:
+      executionTimeout: 30s
+      enableGasMetering: true
+      maxGasLimit: 1000000
+      maxCallDepth: 8
+    deps:
+      state: state
+      policy: policy
+      abi: abi
+      compiler: compiler
+      contracts: contracts
+      runner: runner
+      meters: meters
+      estimator: profiler
+      deployer: deployer
+      validator: validator

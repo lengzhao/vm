@@ -56,3 +56,14 @@ coverage.html
 
 # Backup files
 *.bak
+
+# Git worktrees (local isolation)
+.worktrees/
+
+# Local code index and generated contract artifacts
+/.codegraph/
+/contracts/
+/test_contracts/
+
+# Default durable example state (configure explicit paths in deployments)
+/state.db

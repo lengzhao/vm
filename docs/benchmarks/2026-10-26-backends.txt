@@ -1,0 +1,42 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/lengzhao/vm/assembly
+cpu: Apple M4
+BenchmarkBackend/process/Add-10     	       3	  27069861 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  163480 B/op	     472 allocs/op
+BenchmarkBackend/process/Add-10     	       3	  26293820 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  163026 B/op	     474 allocs/op
+BenchmarkBackend/process/Add-10     	       3	  36870306 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  177717 B/op	     481 allocs/op
+BenchmarkBackend/process/Loop1000-10         	       3	  29133139 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  163234 B/op	     473 allocs/op
+BenchmarkBackend/process/Loop1000-10         	       3	  25533500 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  162765 B/op	     471 allocs/op
+BenchmarkBackend/process/Loop1000-10         	       3	  23992333 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  147936 B/op	     462 allocs/op
+BenchmarkBackend/process/ObjectWrite-10      	       3	  23193750 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  152000 B/op	     492 allocs/op
+BenchmarkBackend/process/ObjectWrite-10      	       3	  23713625 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  152981 B/op	     495 allocs/op
+BenchmarkBackend/process/ObjectWrite-10      	       3	  25019556 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  151408 B/op	     492 allocs/op
+BenchmarkBackend/process/CrossCall-10        	       3	  53857819 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  286896 B/op	     968 allocs/op
+BenchmarkBackend/process/CrossCall-10        	       3	  56019986 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  286469 B/op	     967 allocs/op
+BenchmarkBackend/process/CrossCall-10        	       3	  54573833 ns/op	   3130066 artifact-bytes	       510.5 build-ms	  316677 B/op	     986 allocs/op
+BenchmarkBackend/docker/Add-10               	       3	 300921444 ns/op	   2903579 artifact-bytes	      9017 build-ms	  246178 B/op	    1100 allocs/op
+BenchmarkBackend/docker/Add-10               	       3	 317259847 ns/op	   2903579 artifact-bytes	      9017 build-ms	  231464 B/op	    1088 allocs/op
+BenchmarkBackend/docker/Add-10               	       3	 296270861 ns/op	   2903579 artifact-bytes	      9017 build-ms	  231880 B/op	    1090 allocs/op
+BenchmarkBackend/docker/Loop1000-10          	       3	 272243653 ns/op	   2903579 artifact-bytes	      9017 build-ms	  245906 B/op	    1096 allocs/op
+BenchmarkBackend/docker/Loop1000-10          	       3	 280179764 ns/op	   2903579 artifact-bytes	      9017 build-ms	  246237 B/op	    1099 allocs/op
+BenchmarkBackend/docker/Loop1000-10          	       3	 286925972 ns/op	   2903579 artifact-bytes	      9017 build-ms	  261357 B/op	    1110 allocs/op
+BenchmarkBackend/docker/ObjectWrite-10       	       3	 267983333 ns/op	   2903579 artifact-bytes	      9017 build-ms	  219813 B/op	    1108 allocs/op
+BenchmarkBackend/docker/ObjectWrite-10       	       3	 302033972 ns/op	   2903579 artifact-bytes	      9017 build-ms	  263994 B/op	    1133 allocs/op
+BenchmarkBackend/docker/ObjectWrite-10       	       3	 278727264 ns/op	   2903579 artifact-bytes	      9017 build-ms	  249349 B/op	    1126 allocs/op
+BenchmarkBackend/docker/CrossCall-10         	       3	 558963389 ns/op	   2903579 artifact-bytes	      9017 build-ms	  470061 B/op	    2233 allocs/op
+BenchmarkBackend/docker/CrossCall-10         	       3	 904139556 ns/op	   2903579 artifact-bytes	      9017 build-ms	  454085 B/op	    2222 allocs/op
+BenchmarkBackend/docker/CrossCall-10         	       3	 675051653 ns/op	   2903579 artifact-bytes	      9017 build-ms	  469581 B/op	    2232 allocs/op
+BenchmarkBackend/wazero/Add-10               	       3	 592133097 ns/op	   3443034 artifact-bytes	      6374 build-ms	66456589 B/op	  294808 allocs/op
+BenchmarkBackend/wazero/Add-10               	       3	 644109625 ns/op	   3443034 artifact-bytes	      6374 build-ms	66456578 B/op	  294809 allocs/op
+BenchmarkBackend/wazero/Add-10               	       3	 834578319 ns/op	   3443034 artifact-bytes	      6374 build-ms	66456392 B/op	  294808 allocs/op
+BenchmarkBackend/wazero/Loop1000-10          	       3	 583765097 ns/op	   3443034 artifact-bytes	      6374 build-ms	66456418 B/op	  294809 allocs/op
+BenchmarkBackend/wazero/Loop1000-10          	       3	 629664806 ns/op	   3443034 artifact-bytes	      6374 build-ms	66456434 B/op	  294809 allocs/op
+BenchmarkBackend/wazero/Loop1000-10          	       3	 644761972 ns/op	   3443034 artifact-bytes	      6374 build-ms	66456426 B/op	  294809 allocs/op
+BenchmarkBackend/wazero/ObjectWrite-10       	       3	 596326986 ns/op	   3443034 artifact-bytes	      6374 build-ms	66459698 B/op	  294836 allocs/op
+BenchmarkBackend/wazero/ObjectWrite-10       	       3	 738064278 ns/op	   3443034 artifact-bytes	      6374 build-ms	66459749 B/op	  294837 allocs/op
+BenchmarkBackend/wazero/ObjectWrite-10       	       3	 606806180 ns/op	   3443034 artifact-bytes	      6374 build-ms	66460666 B/op	  294837 allocs/op
+BenchmarkBackend/wazero/CrossCall-10         	       3	1264445597 ns/op	   3443034 artifact-bytes	      6374 build-ms	132920786 B/op	  589677 allocs/op
+BenchmarkBackend/wazero/CrossCall-10         	       3	1166470000 ns/op	   3443034 artifact-bytes	      6374 build-ms	132920989 B/op	  589677 allocs/op
+BenchmarkBackend/wazero/CrossCall-10         	       3	1229798014 ns/op	   3443034 artifact-bytes	      6374 build-ms	132920637 B/op	  589678 allocs/op
+PASS
+ok  	github.com/lengzhao/vm/assembly	105.579s
