@@ -51,7 +51,7 @@ store, _, err := build.Build[core.StateStore](ctx, cfg, "state")
 
 Begin 的 context 约束整个事务；每次读写/提交还检查该操作的 context。预取消、等待锁期间取消或在准备提交期间观察到取消，均不发布数据；与最终发布并发的取消按提交时的线性化顺序处理。单次操作 context 取消不终止仍有效的 Begin context。错误保留 `context.Canceled` / `context.DeadlineExceeded`，可用 `errors.Is` 判断。Rollback 不使用 context，确保宿主请求取消后仍可清理。
 
-内存实现的 Begin 共享不可变快照，写事务 Commit 复制全量键映射并复用未修改的值；输入输出字节仍独立复制。不持久化、不提供跨进程协调。C2 已将 Engine / ProcessRunner / contractapi 的默认 Object 接入事务，失败、OOG、DryRun 不提交，事件仅随成功提交返回，见 [Object 与执行](object_runtime.md)；跨合约共享临时 store 已由 C3 接入，见 [跨合约调用](cross_contract.md)，D3 已提供可选的细粒度冲突检测与有序并行插件，见下节。
+内存实现的 Begin 共享不可变快照，写事务 Commit 复制受影响的不可变分片并复用未修改的分片和值；输入输出字节仍独立复制。不持久化、不提供跨进程协调。C2 已将 Engine / ProcessRunner / contractapi 的默认 Object 接入事务，失败、OOG、DryRun 不提交，事件仅随成功提交返回，见 [Object 与执行](object_runtime.md)；跨合约共享临时 store 已由 C3 接入，见 [跨合约调用](cross_contract.md)，D3 已提供可选的细粒度冲突检测与有序并行插件，见下节。
 
 
 ## 可选 D3 MVCC 后端

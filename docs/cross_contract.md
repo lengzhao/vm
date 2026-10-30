@@ -52,4 +52,4 @@ Call 在发请求前扣固定 10 Gas，并报告调用点已用量（含之前�
 
 Object 消息和最终结果也使用协议 3；未知字段/版本、缺失 Gas、无效参数结构、无权限的上下文字段和少报消耗均拒绝。子调用错误由宿主保留原始 code/cause；新增 `CALL_FAILURE`（通道、本地失败或整链调用资源限制）、`CALL_DEPTH_EXCEEDED`、`REENTRANCY`。错误文本不作为程序判断依据。
 
-当前规则：`contractapi-v3-call`、`go-gas-v3-call`、`pipeline-v13-cross-contract`、`go-development-v3-call` / `go-deterministic-v3-call`。ABI/Profile schema 仍为 1。Call runtime 源码进入内嵌、缓存及清单摘要；旧产物需重新编译部署，没有旧协议兼容路径。
+当前规则：`contractapi-v3-call`、`go-gas-v3-call`、`pipeline-v14-owned-gas-profile`、`go-development-v3-call` / `go-deterministic-v3-call`。ABI/Profile schema 仍为 1。Call runtime 源码进入内嵌、缓存及清单摘要；旧产物需重新编译部署，没有旧协议兼容路径。

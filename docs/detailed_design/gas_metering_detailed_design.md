@@ -33,7 +33,7 @@ type GasMetering interface {
 
 超限时合约进程 panic，`ok=false`，Runner 返回错误。
 
-Object / Transfer / Call 计费：**后置**。
+默认 Object、多对象生命周期和 Call 已计费，价格及画像限制见 [Gas 规范](../gas_metering.md)。
 
 ## 4. GasProfile 与 EstimateGas（已实现）
 
@@ -78,5 +78,5 @@ Estimated = entry_gas + func_entries*1 + loop_sites*LoopBound + Σ(api_calls * G
 
 - 按代码行计费
 - 路径敏感 / 精确迭代次数推断的 EstimateGas
-- Object / Transfer / Call 接口计费
-- 状态回滚数据库语义
+- 资产余额/转账 Gas（当前没有对应账户 API）
+状态回滚、持久化及恢复批次已实现；DryRun 执行后回滚且不发布事件。

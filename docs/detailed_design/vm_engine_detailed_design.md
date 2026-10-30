@@ -55,4 +55,4 @@ type Deps struct {
 
 ## 5. 当前限制
 
-ProcessRunner 提供进程、超时、协议和输出限制；完整 OS 沙箱、链状态读写、跨合约调用与升级仍为后续能力。静态 Gas 估算为启发式值。
+ProcessRunner 提供进程、超时、协议和输出限制；可选 Docker / WASI 后端、状态事务和跨合约调用已实现。合约升级仍未提供。静态 Gas 估算为启发式值。

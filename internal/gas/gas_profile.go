@@ -22,6 +22,10 @@ var gasAPITable = map[string]uint64{
 	"Object.Get":      contractapi.GasObjectGet,
 	"Object.Set":      contractapi.GasObjectSet,
 	"Object.Delete":   contractapi.GasObjectDelete,
+	"CreateObject":    contractapi.GasObjectCreate,
+	"Object.Owner":    contractapi.GasObjectGet,
+	"Object.Transfer": contractapi.GasObjectTransfer,
+	"Object.Destroy":  contractapi.GasObjectDestroy,
 }
 
 // BuildGasProfile 在注入前对原始合约源码做 AST 扫描，生成 core.GasProfile。

@@ -66,9 +66,9 @@ flowchart TD
 ### 3.3 Gas 计费（已实现）
 - 执行入口固定基础 Gas（10）；函数入口 / 循环迭代各 1
 - 编译期注入 `contractapi.ConsumeGas`；只读上下文与 `Log` 按表扣费
-- Deploy 落盘 `gas_profile.json`；`EstimateGas` 支持静态保守上界与可选 DryRun
+- Deploy 落盘 `gas_profile.json`；`EstimateGas` 支持静态启发式估算与可选 DryRun
 - 子进程通过 `VM_GAS_LIMIT` 接收上限，结果 JSON 回报消耗
-- Object / Call Gas：**后置**
+- 默认 Object、多对象生命周期及跨合约 Call 已计费；静态估算不保证上界。
 
 ### 3.4 执行隔离（MVP）
 - 使用独立进程 + 超时执行
@@ -108,7 +108,7 @@ Runner 通过 stdin 传入 JSON：
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "function": "Add",
   "args": [10, 20]
 }
@@ -118,7 +118,7 @@ Runner 通过 stdin 传入 JSON：
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "ok": true,
   "result": 30,
   "gas": 11

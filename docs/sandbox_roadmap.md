@@ -65,3 +65,9 @@ go test -p 1 -timeout 5m ./...
 覆盖真实构建与缓存、编译/执行目标、文件访问拒绝、非 root、出网拒绝、CPU/内存/PID 参数、tmpfs 耗尽、OOM、实际 PID 耗尽、取消后的后代清理，以及 Object/跨合约事务成功与失败回滚。故障注入验证创建失败/超时不启动、清理失败传回 Runner 并阻止 Engine 发布状态和事件。
 
 完整验证还包括同环境 `go test -race -p 1 -timeout 5m ./...`、`go vet ./...` 和 `git diff --check`。参数语义依据 [Docker CLI](https://docs.docker.com/reference/cli/docker/container/run/) 与 [默认 seccomp](https://docs.docker.com/engine/security/seccomp/)。
+
+## 持续验证与完整组合
+
+`.github/workflows/docker.yml` 在 Linux 上准备与 go.mod 相同版本的官方 Go 镜像，解析本地不可变 ID 和实际 Go 版本后设置两个 VM_DOCKER 环境变量，依次运行真实普通/race 隔离、事务和对象恢复集成测试，并检查测试容器残留。镜像标签只用于 CI 准备阶段；VM 实际配置始终使用完整 ID，生产应自行审核固定镜像来源。
+
+严格策略+持久化+对象授权+可恢复批次+Docker 的组合模板为 `presets/objects-docker.yaml`；开发者指南说明替换占位符和运行方式。

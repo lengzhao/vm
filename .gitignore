@@ -64,3 +64,6 @@ coverage.html
 /.codegraph/
 /contracts/
 /test_contracts/
+
+# Default durable example state (configure explicit paths in deployments)
+/state.db

@@ -77,7 +77,7 @@ ResetGas()
 | Log | 2 | 已实现 |
 | DefaultObject().Get / Set / Delete | 5 / 10 / 5 | 已实现 |
 | Call | 10 + 子树实际 Gas | 已实现 |
-| Transfer | — | 后置 |
+| CreateObject / Object.Owner / Transfer / Destroy | 20 / 5 / 10 / 10 | 可选多对象已实现 |
 
 ## 4. 通信方式（当前）
 
@@ -102,9 +102,9 @@ ResetGas()
 }
 ```
 
-## 5. 后置
+## 5. 多对象与宿主边界
 
-- 多 Object、所有权转移 / Transfer（含对应 Gas）
+多对象及 owner 查询、转移、销毁已实现，见 [对象模型](objects.md)。资产余额/转账、签名认证和 nonce 账本仍由集成宿主扩展；对象 Transfer 不代表货币转账。
 
 默认 Object 已通过双向 RPC 接入，失败与 DryRun 回滚，详见 [Object 与事务](object_runtime.md)。
 
@@ -116,7 +116,7 @@ ResetGas()
 - [x] 禁止合约 import 宿主根包
 - [x] 默认库只读 + Log 按表扣费
 - [x] 默认 Object 读写与事务提交/回滚、DryRun 无提交
-- [x] 多 Object / Transfer 明确后置；Call 已接入共享临时 store
+- [x] 可选多 Object / 所有权转移；Call 已接入共享状态事务
 
 
 ## 调用隔离约定

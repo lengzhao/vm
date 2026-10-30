@@ -12,12 +12,13 @@ import (
 	"time"
 
 	"github.com/lengzhao/vm/core"
+	"github.com/lengzhao/vm/internal/statefile"
 	bolt "go.etcd.io/bbolt"
 )
 
-var boltRoot = []byte("vm-state")
-var boltValues = []byte("values")
-var boltSchema = []byte("schema")
+var boltRoot = []byte(statefile.RootBucket)
+var boltValues = []byte(statefile.ValuesBucket)
+var boltSchema = []byte(statefile.SchemaKey)
 
 type BoltOptions struct {
 	Path              string
@@ -127,8 +128,8 @@ func (s *Bolt) Start(ctx context.Context) error {
 				return err
 			}
 		}
-		if !bytes.Equal(root.Get(boltSchema), []byte{1}) || root.Bucket(boltValues) == nil {
-			return fmt.Errorf("unsupported state database schema")
+		if err := statefile.ValidateSchema(tx); err != nil {
+			return err
 		}
 		pending = string(root.Get(boltPending))
 		if pending != "" {

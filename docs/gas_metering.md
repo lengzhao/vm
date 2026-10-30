@@ -18,14 +18,9 @@
 
 Deploy 同时落盘 `gas_profile.json`，供静态 `EstimateGas` 使用。
 
-### 2.2 默认库接口计费（已实现 / 后置）
+### 2.2 默认库接口计费（已实现）
 
-| 状态 | 接口 |
-|------|------|
-| **已实现** | `BlockHeight` / `BlockTime` / `Sender` / `ContractAddress` / `Log` |
-| **后置** | Object 存储、`Transfer`、`Call` 等 |
-
-已实现接口在 `contractapi` 内按 Gas 表调用 `ConsumeGas`。
+只读上下文、Log、默认 Object、多对象创建/查询 owner/转移/销毁、Call 均有运行时扣费。宿主校验对象/跨合约的最低费用。余额和资产转账接口尚未提供。
 
 ### 2.3 历史“按行计费”说明
 
@@ -51,29 +46,15 @@ Deploy 同时落盘 `gas_profile.json`，供静态 `EstimateGas` 使用。
 | 条件判断 | 1 |
 | 函数调用开销 | 5 |
 
-### 3.3 默认库接口 Gas 表
+### 3.3 当前默认库价格
 
-| 接口函数 | Gas消耗 | 状态 |
-|---------|--------|------|
-| BlockHeight() | 1 | 已实现 |
-| BlockTime() | 1 | 已实现 |
-| ContractAddress() | 1 | 已实现 |
-| Sender() | 1 | 已实现 |
-| Log() | 2 | 已实现 |
-| Balance() | 5 | 后置 |
-| Transfer() | 20 | 后置 |
-| CreateObject() | 50 | 后置 |
-| GetObject() | 10 | 后置 |
-| GetObjectWithOwner() | 15 | 后置 |
-| DeleteObject() | 10 | 后置 |
-| Object.Get() | 5 | 后置 |
-| Object.Set() | 10 | 后置 |
-| Object.SetOwner() | 10 | 后置 |
-| Call() | 30 | 后置 |
+- BlockHeight / BlockTime / ContractAddress / Sender：各 1。
+- Log：2。
+- Object.Get / Owner：5；Set：10；Delete：5。
+- CreateObject：20；Object.Transfer / Destroy：各 10。
+- Call：10 加实际子树消耗；根调用只计一次子树 Gas。
 
-### 3.4 对象存储 / 跨合约（后置）
-
-Object 与 `Call()` 计费表项保留设计，待对应 Host 能力落地后再接入。
+静态画像覆盖以上直接调用；对象方法在没有完整类型信息时按同名方法识别，可能误计无关方法。函数值间接调用、helper 内部路径、循环放大和动态子调用不保证完整计入。OpenObject/DefaultObject 只构造句柄，没有额外价格。
 
 ## 4. Gas限制与超限处理
 
@@ -87,7 +68,7 @@ Object 与 `Call()` 计费表项保留设计，待对应 Host 能力落地后再
 
 1. 合约侧累计消耗并检查上限
 2. 超限立即停止执行
-3. 本阶段无持久状态提交；失败等价于无副作用
+3. 引擎回滚整条调用链的状态事务，清除业务数据及事件
 4. 返回 Gas 不足错误
 
 ## 5. 实现细节
@@ -173,3 +154,7 @@ Get / Set / Delete 固定为 5 / 10 / 5，字段与消息总量受独立资源�
 ## 跨合约 Gas（C3）
 
 Call 固定 10 Gas 加子树实际消耗，根计量一次。静态画像只估算固定成本，不估算动态目标子树；DryRun 执行整链后丢弃临时 store，返回整链 Gas。规则及预算见 [跨合约调用](cross_contract.md)。
+
+## 多对象静态画像补齐
+
+CreateObject、Owner、Transfer、Destroy 与运行时常量对齐。无循环的直接 CreateObject 函数静态值由 11 修正为 31；运行时扣费规则不变。编译流水线身份升级为 pipeline-v14-owned-gas-profile，旧缓存不会被复用。已部署画像不会原地重写，需重新编译部署才能获得新画像；部署摘要和地址可能随画像变化。

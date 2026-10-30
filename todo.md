@@ -14,7 +14,7 @@
 - 可选 E1：state/bbolt 同步持久化、重启恢复与 D3 批量组合；提交不确定结果须重开核对
 - 可选 E2：共享独占会话、状态与回执原子提交、同批次身份重放/续跑及持久未完成标记
 - 可选 E3：多 Object、所属合约隔离、owner 授权/转移/销毁；根身份认证由宿主负责
-- **尚未完成**：链级共识/重组与恢复流程集成、开发者指南
+- **尚未完成**：链级共识/重组与宿主认证集成、升级迁移等平台能力
 
 ## 开发计划
 
@@ -26,8 +26,8 @@
 - [x] Runner 单元测试（JSON / 超时 / Gas 超限 / 未知函数）
 - [x] Execute 失败路径 E2E（Gas、超时、参数错误、多返回值）
 - [x] ContractManager 真实二进制 Deploy→Execute
-- [ ] 详细设计文档全面收敛为 MVP / 后置标注
-- [ ] 开发者指南与 API 参考
+- [x] 文档入口与核心能力规范收敛为当前态 / 边界（2026-10-30）
+- [x] 开发者指南与 API 参考（2026-10-30）
 
 ### 第五阶段：Host Runtime / 默认库 MVP
 - [x] 定义 Host / CallContext / Event
@@ -40,7 +40,7 @@
 
 ### 第六阶段：Gas 模型推进（已完成）
 - [x] 明确入口 / 函数 / 循环计费点基线
-- [x] 默认库接口 Gas 表（只读上下文 + Log；Object/Call 后置）
+- [x] 默认库接口 Gas 表（含 Object / Call / 多对象生命周期）
 - [x] EstimateGas 启发式估算（静态 Profile + 可选 DryRun）
 - [x] 基准测试（Add / Loop / EstimateGasStatic）
 
@@ -264,3 +264,12 @@
 - 最终功能代码固定后，显式启用Docker的全量普通测试、全量race（assembly 227.917秒）、go vet、git diff --check均通过，无vm-d1容器残留；未修改超时预算或增加依赖。
 - 文档与配置：docs/objects.md、presets/objects.yaml、docs/plans/2026-10-27-e3-objects-design.md、docs/plans/2026-10-27-e3-objects.md；同步README、插件、状态与架构。启用/修改权限规则须更新executionID；旧程序或绕过对象服务的插件不能降级写库。原始数据库、状态接口和自定义插件仍属可信能力。无对象枚举、墓碑清理、分布式授权或链级共识/重组。
 - 变更保留当前dev工作区，未提交/推送。E1–E3已完成；后续可收敛设计文档并补开发者指南/API参考。
+
+### 第十五批验收记录：功能收敛与持久化运维（2026-10-30）
+
+- 补齐多对象静态 Gas，升级编译流水线缓存身份；运行时价格不变。
+- 新增开发者/API 指南、对象+持久恢复完整示例及 Docker 组合模板，收敛当前文档口径。
+- 新增 Docker 专用 CI，显式普通/race 隔离与集成测试，远端尚未运行。
+- 新增可选数据库一致备份与容量统计、离线 backup/status/restore CLI；源只读、校验既有 VM schema、目的不覆盖、恢复保留回执和 pending 标记。容量规程不自动删除影响重放/ID 复用的数据。
+- 最终显式 Docker 的全量普通/race/vet/diff 检查通过，无测试容器残留；完成实际备份恢复与业务重放演练。独立审查两项 P2 已先补失败回归再修复，增量复核无新阻断项。
+- 详见 docs/plans/2026-10-30-completeness.md、docs/developer_guide.md、docs/operations.md。未提交/推送。

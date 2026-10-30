@@ -24,7 +24,7 @@ engine := vm.NewVMEngine(vm.VMConfig{
 - import 仅允许 strconv、errors、github.com/lengzhao/vm/contractapi，允许普通别名，不允许点导入和空导入。
 - strconv 仅开放整数/布尔的 Format、Parse、Append，以及 Quote / Unquote / rune 引用与字符分类；完整符号列表以 determinism.go 为准。ParseInt/ParseUint 的 bitSize=0 采用本策略的 64 位布局。
 - errors 仅允许 New。
-- contractapi 仅允许 BlockHeight、BlockTime、Sender、ContractAddress、Log、DefaultObject、Call 及对象的 Get/Set/Delete。
+- contractapi 仅允许 BlockHeight、BlockTime、Sender、ContractAddress、Log、DefaultObject、CreateObject、OpenObject、Call 及对象的 Get/Set/Delete/Owner/Transfer/Destroy。
 - 链时间、发送方、区块高度等必须来自 CallContext / Host 的值快照，不读取操作系统时间。
 
 ## 拒绝的能力

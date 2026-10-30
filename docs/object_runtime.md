@@ -1,6 +1,6 @@
 # 默认 Object 与执行事务（C2）
 
-每个合约拥有一个默认 Object。合约只能访问当前实际执行地址的字段，字段值为不透明字节串；不允许直接选择其他地址的字段。跨合约访问通过 [Call](cross_contract.md) 进入目标合约；多 Object 与所有权转移后置。
+每个合约拥有一个默认 Object。合约只能访问当前实际执行地址的字段，字段值为不透明字节串；不允许直接选择其他地址的字段。跨合约访问通过 [Call](cross_contract.md) 进入目标合约；多 Object 与所有权转移作为可选服务已提供，见 [对象模型](objects.md)。
 
 ```go
 package main
@@ -64,6 +64,6 @@ Get 回复的 exists / value 表示真实字段结果；Set/Delete 的回复无�
 
 内存后端仅在当前实例存活期间保存数据，VM 重建或进程重启后不会恢复状态。合约文件持久化与对象状态持久化是两种独立能力，当前没有持久化状态后端。
 
-本次版本为：调用协议 3、ABI schema 1、`contractapi-v3-call`、`go-gas-v3-call`、编译流水线 `pipeline-v13-cross-contract`，源码策略为 `go-development-v3-call` / `go-deterministic-v3-call`。产物清单绑定新增 Object runtime 源码。旧产物要求重新编译部署，不提供协议 v1 兼容分支。
+本次版本为：调用协议 3、ABI schema 1、`contractapi-v3-call`、`go-gas-v3-call`、编译流水线 `pipeline-v14-owned-gas-profile`，源码策略为 `go-development-v3-call` / `go-deterministic-v3-call`。产物清单绑定新增 Object runtime 源码。旧产物要求重新编译部署，不提供协议 v1 兼容分支。
 
 多对象、所有权和转移不在本次范围；C3 已实现跨合约共享临时 store/Gas、重入与深度限制，见 [跨合约调用](cross_contract.md)；D3 负责细粒度冲突和确定性并行。

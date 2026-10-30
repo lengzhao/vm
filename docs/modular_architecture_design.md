@@ -89,7 +89,7 @@ type Runner interface {
 
 ## 4. 明确后置的模块
 - Wasmtime/TinyGo 等额外后端扩展（Docker 与 WASI/wazero 已可选，见 [后端比较](backend_comparison.md)）
-- Host Runtime / 默认库链状态后端
+- 额外链宿主能力（现有 Host、状态事务、bbolt、对象和跨合约已实现）
 - 外部配置中心（PluginKit 配置装配已实现）
 - 面向持久化链状态的生产调度集成（D3 可选有序批量执行已实现，见 [有序并行执行](parallel_execution.md)）
 - 合约升级机制

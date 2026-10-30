@@ -35,7 +35,7 @@ flowchart TD
 ### 3.3 Gas 注入与 Profile（已实现）
 - 在函数入口和 `for` / `range` 循环体插入 `contractapi.ConsumeGas(1)`
 - 对原始源码扫描生成 `GasProfile`（函数入口数、循环点数、contractapi 调用）
-- 只读上下文与 `Log` 在 `contractapi` 内按表扣费；Object / Call Gas 后置
+- 只读上下文与 `Log` 在 `contractapi` 内按表扣费；默认 Object、多对象生命周期和 Call 也按各自价格扣费
 
 ### 3.4 入口生成
 编译器生成独立 `entry.go`：
@@ -68,9 +68,9 @@ contracts/{address}/
 ### 3.7 执行与估算
 1. `VMEngine.Execute` / `ExecuteWithContext` 加载合约
 2. `ProcessRunner` 以超时上下文启动二进制，注入最小 `VM_*` 环境
-3. stdin 写入 `{"function":"...","args":[...]}`
+3. stdin 写入 `{"version":3,"function":"...","args":[...]}`
 4. 解析 stdout JSON（含 `events`），回写宿主 `GasMetering`；结果以 `ExecuteResult` 为准
-5. `EstimateGas`：默认读 `gas_profile.json` 静态保守上界；`DryRun` 真执行取 `GasConsumed`
+5. `EstimateGas`：默认读 `gas_profile.json` 静态启发式估算（非上界）；`DryRun` 真执行取 `GasConsumed`
 
 ## 4. 错误处理
 任一阶段失败即中止：
@@ -81,6 +81,6 @@ contracts/{address}/
 - 静态 `EstimateGas` 缺少 `gas_profile.json`（旧合约需重部署）
 
 ## 5. 当前限制
-- 参数类型支持：`int` / `int64` / `uint64` / `float64` / `string` / `bool`
-- Object / 跨合约 Call 后置
-- 复杂沙箱后置
+- 公开 ABI 支持整数各宽度、bool/string 和开发模式浮点标量；严格模式拒绝浮点，复合类型/泛型不支持，详见 [调用协议](../call_protocol.md)。
+- 默认 ProcessRunner 用于开发；Docker 编译/执行隔离和 WASI 已可选接入。
+- 状态事务、多对象、跨合约、持久化和恢复批次已实现；升级和链级重组尚未提供。

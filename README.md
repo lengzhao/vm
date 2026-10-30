@@ -40,7 +40,7 @@
 - `Deploy(contract *CompiledContract) (string, error)`：部署合约
 - `Execute(contractAddress, function string, args ...interface{}) ([]byte, error)`：执行合约函数
 - `ExecuteWithContext(..., callCtx *CallContext, ...) (*ExecuteResult, error)`：带 Host 上下文执行
-- `EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)`：静态保守估算或 DryRun
+- `EstimateGas(address, function string, opts *EstimateOptions) (*GasEstimate, error)`：静态启发式估算或 DryRun
 - `GetLastEvents() []Event`：获取最近一次执行事件
 - `GetContract(address string) (*CompiledContract, error)`：获取合约信息
 - `GetContractABI(address string) (*abi.ABI, error)`：获取合约ABI
@@ -229,3 +229,12 @@ go run ./examples/plugins presets/default.yaml
 可选可恢复批次：`batch/recoverable` + `state/bbolt` 提供共享独占会话、状态与回执原子提交、同 ID 续跑和重放；默认及旧批量接口不变。配置见 [`presets/recoverable.yaml`](presets/recoverable.yaml)，身份、未完成批次与事件去重要求见 [可恢复批次](docs/recoverable_batches.md)。
 
 可选多对象与 owner 授权：见 [对象模型](docs/objects.md) 和 [配置](presets/objects.yaml)；根 Sender 认证由宿主负责。
+
+## 集成与运维入口
+
+- [开发者指南与宿主 API 入口](docs/developer_guide.md)、[合约 API](docs/default_library.md)
+- [完整对象/持久化/恢复示例](examples/integration/main.go)：`go run ./examples/integration presets/objects.yaml`
+- [严格策略 + Docker + 持久化 + 对象 + 恢复批次模板](presets/objects-docker.yaml)，替换镜像/版本占位符后使用
+- [数据库备份恢复与容量管理](docs/operations.md)：`go run ./cmd/vmstate status -db /data/state.db`
+
+静态 Gas 已覆盖多对象创建、owner 查询、转移与销毁，但仍非严格上界。Docker 隔离由独立 CI 显式验收；默认本地测试没有设置 Docker 环境变量时会跳过真实容器测试。

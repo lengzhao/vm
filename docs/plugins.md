@@ -217,3 +217,9 @@ WASI 默认不授予文件挂载、socket、宿主时钟/随机源或宿主环�
 ## 可选 E3 对象能力
 
 `objects/owner` 提供 `core.ObjectAuthorizer`；`objects/transactional` 仅依赖该能力并提供 `core.ObjectService`。`engine/objects` 依赖 `components: engine/components` 和 `objects: ObjectService`，提供原有 Engine、TransactionExecutor 和 DryRun 能力，不更改默认图。每帧绑定实际合约与 Sender，元数据及字段使用调用树的同一事务；owner 规则、错误分类、资源限制见 [多对象文档](objects.md)。[objects.yaml](../presets/objects.yaml) 同时演示持久化和可恢复批次组合，修改权限规则时须更新 executionID。
+
+## 可选持久化维护能力
+
+`state/bbolt` 额外提供 `core.StateBackupper`（`Backup(ctx, io.Writer)`）和 `core.StateInspector`（`StateStats(ctx)`），不扩大 StateStore/Engine。通过 Runtime.Result.Instances 获取 state 实例并断言相应能力；备份包含状态、回执及 pending fence，Writer 不能重入 store。维护与提交/关闭串行，context 不强制中断任意 I/O。CLI 和指标解释见 [运维指南](operations.md)。
+
+组合严格策略、持久化恢复、对象 owner 和 Docker 编译/运行的模板见 [objects-docker.yaml](../presets/objects-docker.yaml)，真实业务流程见 [integration](../examples/integration/main.go)。镜像和版本占位符必须先替换；这些模板不提供宿主身份认证或外部事件可靠投递。

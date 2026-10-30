@@ -56,4 +56,4 @@
 D3 提供 `state/mvcc` 与 `batch/ordered`：按键版本检测冲突，有界并行推测、按输入顺序提交及冲突重执行。需无外部并发写入，非整批原子提交，详见 [有序并行执行](parallel_execution.md)。
 
 ## 6. 作为开源库集成
-本项目是 Go 库，不提供业务 `main.go`。集成方通过 `NewVMEngine` 使用 Compile/Deploy/Execute，并在后续实现默认库 Host 后端。
+本项目是 Go 库，不提供业务 `main.go`。集成方通过 `NewVMEngine` 使用 Compile/Deploy/Execute，或使用 assembly/core 集成已实现的 Host、对象与跨合约能力。

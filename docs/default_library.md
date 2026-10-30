@@ -1,97 +1,23 @@
-# 默认库接口规范
+# 合约侧 API 参考
 
-## 1. 概述
+合约导入 `github.com/lengzhao/vm/contractapi`；宿主导入 `core` / `assembly`。两者不能混用，合约不得导入宿主根包。
 
-默认库是合约与区块链环境交互的唯一受控入口。
+## 已实现 API
 
-- **当前态**：合约只能 import `github.com/lengzhao/vm/contractapi`；禁止 import 宿主根包
-- Host Runtime 实现见 [`host_runtime.md`](host_runtime.md)
+- 上下文：`BlockHeight() uint64`、`BlockTime() uint64`、`Sender() string`、`ContractAddress() string`。
+- 事件：`Log(eventName string, keyValues ...any)`。只有成功提交返回事件；失败、OOG、DryRun 不发布。
+- 默认对象：`DefaultObject() Object`，提供 `Get(key) ([]byte,bool,error)`、`Set(key string, value []byte) error`、`Delete(key string) error`。读写限于当前执行合约，共享本次事务。
+- 多对象（需启用 E3 插件）：`CreateObject(id string) (Object,error)`、`OpenObject(id string) Object`；对象另提供 `Owner() (string,error)`、`Transfer(owner string) error`、`Destroy() error`。Get/Set/Delete 复用同一对象类型。ID 为合约范围内调用方指定的唯一字符串。
+- 跨合约：`Call(contract, function string, args ...any) ([]byte,error)`，共享整条调用链的状态事务、Gas 和有序事件；子调用失败使整链失败。
 
-## 2. MVP（优先实现）
+`OpenObject` 只创建句柄，实际操作时检查存在及权限；不提供按 owner 列举对象。根 Sender 由宿主认证，子 Sender 是调用合约。对象 Transfer 只转移所有权，不是货币转账。
 
-### 2.1 只读上下文
+详见 [默认对象](object_runtime.md)、[多对象](objects.md)、[跨合约](cross_contract.md)、[调用协议](call_protocol.md)、[开发者指南](developer_guide.md)。
 
-```go
-BlockHeight() uint64
-BlockTime() uint64
-ContractAddress() Address
-Sender() Address
-```
+## 运行时保留 API
 
-### 2.2 默认 Object（已实现）
+InitGas、ResetGas、ConsumeGas、GasUsed、Reset、DrainEvents 等由编译入口管理；合约源码不能直接引用。`init`、`recover` 和 `__vm` 标识受强制完整性检查约束。
 
-```go
-DefaultObject() Object
-// Object.Get(key string) ([]byte, bool, error)
-// Object.Set(key string, value []byte) error
-// Object.Delete(key string) error
-```
+## 未提供的能力
 
-每合约一个默认对象，通过状态事务读写；失败/OOG/DryRun 不提交。下文多对象与所有权 API 是后置设计，详细语义见 [默认 Object](object_runtime.md)。
-
-### 2.3 事件
-
-```go
-Log(eventName string, keyValues ...any)
-```
-
-## 3. 其他接口与后置设计
-
-### 3.1 账户
-
-```go
-User() Address
-Transfer(from, to Address, amount uint64) error
-```
-
-### 3.2 多对象存储（后置）
-
-```go
-CreateObject() Object
-GetObject(id ObjectID) (Object, error)
-GetObjectWithOwner(owner Address) (Object, error)
-DeleteObject(id ObjectID)
-```
-
-### 3.3 跨合约（已实现 C3）
-
-```go
-Call(contract string, function string, args ...any) ([]byte, error)
-```
-
-共享临时 store 与 Gas，仅根调用成功才发布，失败/DryRun 丢弃；详见 [跨合约调用](cross_contract.md)。
-
-### 3.4 辅助
-
-```go
-Assert(condition any)
-GetHash(data []byte) Hash
-```
-
-## 4. 多对象接口（设计方向，后置）
-
-```go
-type Object interface {
-  ID() ObjectID
-  Owner() Address
-  Contract() Address
-  UpdatedAt() uint64
-  SetOwner(addr Address)
-  Get(field string, value any) error
-  Set(field string, value any) error
-}
-```
-
-## 5. 对象存储机制（设计方向，后置）
-
-1. 合约创建时自动创建默认 Object
-2. 统一账户模式：状态都写默认 Object（需串行）
-3. 并行模式：按用户 Object隔离，交易携带 ReadList/WriteList
-4. Object 所有者须为合约或交易发起方
-
-## 6. 设计原则
-
-1. 合约不能直接访问 OS / 网络
-2. 默认库是唯一链交互面
-3. MVP 先做只读上下文与事件，再扩展存储与跨合约
-4. 包边界分离：宿主 `vm` ≠ 合约侧 `contractapi`
+账户余额/资产转账、共享授权、统一资产标准、哈希工具 API、对象枚举，以及合约升级迁移尚未提供。宿主可以通过窄能力插件扩展，但应版本化执行规则、明确确定性与事务边界，不能把旧目标态伪装为可用 API。

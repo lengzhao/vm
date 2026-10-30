@@ -68,4 +68,4 @@ contract_fcef3323949e2c2397b5761bc412e1282e402308fcb0f75b2cb89d38e832aee8
 
 ## 集成边界
 
-DeploymentInput 是调用方提供的域数据，VM 不据此认证 Sender，也不维护账户 nonce 使用账本。链宿主应认证发起者，并决定 nonce、salt、重复交易的处理规则。B4 完成的是地址及部署身份一致性；状态快照、提交/回滚与 Object 属后续 C1/C2。
+DeploymentInput 是调用方提供的域数据，VM 不据此认证 Sender，也不维护账户 nonce 使用账本。链宿主应认证发起者，并决定 nonce、salt、重复交易的处理规则。B4 完成的是地址及部署身份一致性；状态快照、提交/回滚与 Object 已实现，见状态事务与对象文档。

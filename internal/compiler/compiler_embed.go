@@ -13,7 +13,7 @@ var embeddedContractAPIObjectSource = contractapi.ObjectSource
 
 var embeddedContractAPICallSource = contractapi.CallSource
 
-const compilerBuildID = "pipeline-v13-cross-contract"
+const compilerBuildID = "pipeline-v14-owned-gas-profile"
 
 //go:embed entry.go.tmpl
 var contractEntryTemplate string

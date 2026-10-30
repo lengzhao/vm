@@ -10,6 +10,8 @@
 docs/
 ├── 00_directory_structure.md
 ├── architecture.md
+├── developer_guide.md           # 新集成与 API 入口
+├── operations.md                # 备份恢复、容量与故障规程
 ├── plugins.md                   # PluginKit 配置、扩展与生命周期
 ├── artifact_manifest.md         # 产物清单、版本与摘要校验
 ├── deployment.md                # 确定性部署、输入与冲突规则
@@ -47,8 +49,9 @@ vm/
 ├── internal/          # 按能力分包；compat 适配；builtin 仅历史回归测试
 ├── presets/         # 插件图
 ├── contractapi/     # 合约侧默认库
+├── cmd/vmstate/     # 离线持久状态运维
 ├── abi/
-├── examples/{basic,gas,complete,advanced,event,plugins}/
+├── examples/{basic,gas,complete,advanced,event,plugins,integration}/
 └── docs/
 ```
 
@@ -82,9 +85,10 @@ vm/
 ## 4. 阅读建议
 
 ### 4.1 新手
-1. architecture.md
-2. contract_processing_flow.md
-3. detailed_design_overview.md
+1. developer_guide.md
+2. architecture.md
+3. detailed_design/detailed_design_overview.md
+4. operations.md
 
 ### 4.2 下一阶段开发
 1. host_runtime.md / default_library.md
